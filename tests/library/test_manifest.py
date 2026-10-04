@@ -1,4 +1,4 @@
-"""Manifest rules 1-6 of concepts/app-store.md section 3, one assertion per rule."""
+"""Manifest rules 1-6 and 8 (docs/manifest.md), one assertion per rule."""
 from __future__ import annotations
 
 import copy
@@ -332,10 +332,10 @@ def test_a_link_may_name_an_icon_on_the_host_of_its_entry():
 def test_a_link_keeps_the_optional_keys_that_make_sense_for_it():
     m = parse_manifest(link(
         description="Our shop", min_app_version="1.0.0", audience_roles=["advisor"],
-        name_localized={"de": "Unser Shop"}, description_localized={"de": "Der Shop"}, display="external",
+        name_localized={"de": "Our shop (de)"}, description_localized={"de": "The shop (de)"}, display="external",
     ))
     assert (m.description, m.min_app_version, m.audience_roles) == ("Our shop", "1.0.0", ("advisor",))
-    assert m.name_localized["de"] == "Unser Shop" and m.description_localized["de"] == "Der Shop"
+    assert m.name_localized["de"] == "Our shop (de)" and m.description_localized["de"] == "The shop (de)"
 
 
 def test_a_link_may_leave_the_tables_empty():

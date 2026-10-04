@@ -128,7 +128,7 @@
     setTitle: function (title) {
       return send({ command: "setTitle", title: String(title) });
     },
-    /** Open an https URL in the system browser (the app refuses anything else). */
+    /** Ask the host app to open an https URL in the system browser (the host app decides which addresses it accepts). */
     openExternal: function (url) {
       return send({ command: "openExternal", url: String(url) });
     },
@@ -199,9 +199,12 @@
   // In a plain browser tab: the bar that leads back to the web app.
   if (!inPhoneApp() && !framed() && APP_ORIGINS.length > 0) whenReady(showBar);
 
+  function languageTag() {
+    return ((document.documentElement.lang || (typeof navigator !== "undefined" && navigator.language) || "en") + "").replace("_", "-");
+  }
+
   function language() {
-    var lang = (document.documentElement.lang || (typeof navigator !== "undefined" && navigator.language) || "en") + "";
-    return lang.toLowerCase().split("-")[0];
+    return languageTag().toLowerCase().split("-")[0];
   }
 
   function goBack() {
@@ -226,7 +229,8 @@
     // "{app}" in a label stands for the name.
     var appName = typeof CONFIG.appName === "string" ? CONFIG.appName : "";
     var labels = CONFIG.backLabels && typeof CONFIG.backLabels === "object" ? CONFIG.backLabels : {};
-    var template = labels[lang] || labels.en || "Back to {app}";
+    // The page's full language tag first ("pt-BR"), then its language ("pt"), then English.
+    var template = labels[languageTag()] || labels[lang] || labels.en || "Back to {app}";
     var label = String(template).split("{app}").join(appName || "the app");
     var accent = typeof CONFIG.appAccent === "string" && /^#[0-9a-fA-F]{3,8}$/.test(CONFIG.appAccent) ? CONFIG.appAccent : "#2563eb";
     var dark = typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches;

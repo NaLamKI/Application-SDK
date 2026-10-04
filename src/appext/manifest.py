@@ -1,9 +1,9 @@
 """The manifest `extension.toml`: one reading, one set of rules.
 
 The SDK reads the manifest at start-up, the App Store reads it on upload. Both
-must reach the **same verdict**, so the rules (rules 1-6 of
-`concepts/app-store.md` section 3) live here as plain checks over the parsed
-data and the shared fixtures in `sdk/conformance/manifests/` run against them.
+must reach the **same verdict**, so the rules (rules 1-6 and 8 of `docs/manifest.md`) live here
+as plain checks over the parsed data and the shared fixtures in `conformance/manifests/` run
+against them.
 Rule 7 (does the service catalog know this audience and scope?) is the store's
 business: the SDK has no catalog.
 
@@ -26,7 +26,7 @@ from types import MappingProxyType
 from typing import Any
 from urllib.parse import urlsplit
 
-#: The patterns are the contract (`sdk/conformance/manifests/README.md` lists them): the store
+#: The patterns are the contract (`conformance/manifests/README.md` lists them): the store
 #: copies them, and the shared cases check that both sides give the same verdict.
 ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]{1,38}[a-z0-9]$")
 SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")

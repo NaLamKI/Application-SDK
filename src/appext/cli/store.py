@@ -1,5 +1,5 @@
 """`appext store …`: the developer's (and reviewer's) side of the App Store API
-(`concepts/app-store.md` §7).
+(`docs/platform-contract/app-store-api.md`).
 
 Every command is one or two requests; what the store answers is shown as the
 store says it – error `code` and `message` included.
@@ -97,7 +97,9 @@ class Store:
         self.url = store_url(args, ctx)
         warn_if_unencrypted(ctx, self.url, "the store at")
         self.http = ctx.http(base_url=self.url + "/store/")  # §7: the store lives under <api>/store
-        self._token = signin.access_token(ctx, issuer(args, ctx))
+        # A token from the environment (CI) is all the store needs; only a stored sign-in has an issuer.
+        self._token = (ctx.env.get("APPEXT_STORE_TOKEN", "").strip()
+                       or signin.access_token(ctx, issuer(args, ctx)))
 
     def __enter__(self) -> "Store":
         return self
@@ -193,7 +195,7 @@ def register(args, ctx: Context) -> int:
         else:
             ctx.say(f"Registered {project.id} {project.version}: draft created.")
             if project.client_auth != "private_key_jwt":
-                ctx.say("client_secret extension: the secret is issued with the first auth bundle.")
+                ctx.say("client_secret extension: once it is approved, `appext store rotate-secret --out FILE` issues the secret (once).")
             else:
                 jwk_file = _key_path(args, ctx, project.root)
                 if jwk_file.is_file():

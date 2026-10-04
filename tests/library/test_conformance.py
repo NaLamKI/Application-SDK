@@ -1,4 +1,4 @@
-"""The shared manifest cases (`sdk/conformance/manifests/`): the store and the SDK must reach the same verdict."""
+"""The shared manifest cases (`conformance/manifests/`): the store and the SDK must reach the same verdict."""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from appext.manifest import ManifestError, load_manifest
 ROOT = Path(__file__).resolve().parents[2] / "conformance" / "manifests"
 EXPECTED = json.loads((ROOT / "expected.json").read_text()) if (ROOT / "expected.json").exists() else {}
 
-pytestmark = pytest.mark.skipif(not EXPECTED, reason="sdk/conformance/manifests/expected.json is not there")
+pytestmark = pytest.mark.skipif(not EXPECTED, reason="conformance/manifests/expected.json is not there")
 
 
 def test_every_case_file_is_listed_and_every_listing_has_a_file():

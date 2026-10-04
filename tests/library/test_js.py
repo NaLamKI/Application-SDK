@@ -248,7 +248,7 @@ console.log(JSON.stringify(out));
 
 
 def test_bridge_takes_what_the_app_pushes_as_window_events_and_state(tmp_path):
-    # The app (ui/lib/domain/extension_bridge.dart) dispatches a CustomEvent per change and keeps
+    # The host app dispatches a CustomEvent per change and keeps
     # window.AppExtState; a page that loads later must still see the latest values.
     result = run_node(
         tmp_path,
@@ -427,13 +427,18 @@ console.log(JSON.stringify(out));
     assert result["english"] == "Return to Acme" and result["badge"] == "Acme" and result["accent"] == [True, True]
 
 
-@pytest.mark.parametrize("lang, expected", [("xx", "[xx] Back to Acme"), ("yy", "Back to Acme")], ids=["translated", "falls-back-to-english"])
+@pytest.mark.parametrize("lang, expected", [
+    ("xx", "[xx] Back to Acme"),
+    ("xx-YY", "[xx-YY] Back to Acme"),      # the full tag beats the language
+    ("xx-ZZ", "[xx] Back to Acme"),         # no label for the region: the language's
+    ("yy", "Back to Acme"),                 # nothing for it: English
+], ids=["translated", "full-tag", "language-of-the-tag", "falls-back-to-english"])
 def test_the_label_follows_the_pages_language_and_falls_back_to_english(tmp_path, lang, expected):
     result = run_node(
         tmp_path,
         FRAME_PRELUDE
         + f"""
-const labels = {{ en: "Back to {{app}}", xx: "[xx] Back to {{app}}" }};
+const labels = {{ en: "Back to {{app}}", xx: "[xx] Back to {{app}}", "xx-YY": "[xx-YY] Back to {{app}}" }};
 load({{ appOrigins: [WEB], framed: false, lang: "{lang}", config: {{ appName: "Acme", backLabels: labels }} }});
 console.log(JSON.stringify({{ label: document_.body.children[0].shadow.children[0].children[0].attrs["aria-label"] }}));
 """,

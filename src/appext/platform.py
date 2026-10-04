@@ -52,6 +52,9 @@ from urllib.parse import urlsplit
 
 #: The project's own platform file, next to `extension.toml`.
 PROJECT_FILE = "appext.toml"
+#: `--platform none` / `APPEXT_PLATFORM=none`: read no platform file at all (tests, or a run that is
+#: configured by the environment alone).
+NO_PLATFORM_FILE = "none"
 DEFAULT_CLI_CLIENT_ID = "appext-cli"
 
 _PLATFORM_KEYS = {"name", "issuer", "store_url", "cli_client_id", "app_redirect_uri", "services", "starter"}
@@ -264,9 +267,12 @@ def platform_file(
 
     `explicit` (`--platform`) beats `APPEXT_PLATFORM`; either is a path (it contains a path separator
     or ends in `.toml`) or the name of a file under `<config dir>/platforms/`. A named file that does
-    not exist is an error – asking for something and silently getting something else is worse.
+    not exist is an error – asking for something and silently getting something else is worse. The
+    name `none` means: no file (the environment alone).
     """
     chosen = explicit or environ.get("APPEXT_PLATFORM") or None
+    if chosen == NO_PLATFORM_FILE:
+        return None
     if chosen:
         looks_like_path = os.sep in chosen or "/" in chosen or chosen.endswith(".toml")
         if looks_like_path:

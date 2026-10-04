@@ -9,7 +9,7 @@ min_app_version = "1.0.0"
 description = "Our shop"
 
 [extension.name_localized]
-de = "Unser Shop"
+de = "Our shop (de)"
 
 [consent]
 scopes = []

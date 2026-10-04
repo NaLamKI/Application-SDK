@@ -185,6 +185,14 @@ def test_the_users_default_can_be_left_out(tmp_path, home):
     assert platform_file(home, cwd=tmp_path, user_default=False) is None
 
 
+def test_none_means_no_file_at_all(tmp_path, home):
+    write(tmp_path / PROJECT_FILE)
+    write(tmp_path / "config" / "appext" / "platform.toml")
+    assert platform_file({**home, "APPEXT_PLATFORM": "none"}, project_dir=tmp_path, cwd=tmp_path) is None
+    assert platform_file(home, explicit="none", project_dir=tmp_path, cwd=tmp_path) is None
+    assert discover({**home, "APPEXT_PLATFORM": "none"}, project_dir=tmp_path, cwd=tmp_path) == Platform()
+
+
 # -- the environment on top ----------------------------------------------------------------------------------
 
 

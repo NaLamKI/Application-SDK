@@ -4,7 +4,7 @@ The auth bundle from the store carries the lock file. It records what the
 review approved (version, client, scopes). At start the SDK compares it with
 the manifest and **refuses to run** when the manifest asks for more. A forgotten
 review then shows up before the deployment goes live and not as a failing
-token exchange in production (`concepts/app-store.md` section 9).
+token exchange in production (`docs/platform-contract/auth-bundle.md`).
 
 A missing file is only acceptable in `local`: without the store there is
 nothing to approve against. Anywhere else it is an error, because "no lock

@@ -36,7 +36,7 @@ def _summary(project: Project) -> list[str]:
     if project.is_link:
         return _link_summary(project)
     lines = [
-        f"id         {project.id}  (Keycloak client {project.client_id})",
+        f"id         {project.id}  (OAuth client {project.client_id})",
         f"name       {project.name}",
         f"version    {project.version}",
         f"client     {project.client_auth}",

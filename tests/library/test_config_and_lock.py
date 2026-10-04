@@ -135,6 +135,14 @@ def test_a_platform_file_that_names_a_platform_by_environment(project, tmp_path)
     assert s.issuer == "http://127.0.0.1:58080/realms/chosen"
 
 
+def test_a_run_can_ignore_the_platform_file(project):
+    """`APPEXT_PLATFORM=none`: what tests use, so that the file next to the manifest cannot leak in."""
+    with pytest.raises(ConfigError, match="APPEXT_ISSUER is required"):
+        ExtensionSettings.from_env(project, {"APPEXT_PLATFORM": "none"})
+    s = ExtensionSettings.from_env(project, {"APPEXT_PLATFORM": "none", **LOCAL})
+    assert s.app_redirect_uri is None and "projects" not in s.services
+
+
 def test_a_broken_platform_file_is_reported(project, tmp_path):
     (tmp_path / "appext.toml").write_text('[platform]\nissuer = "not a url"\nsurprise = 1\n')
     with pytest.raises(ConfigError) as err:

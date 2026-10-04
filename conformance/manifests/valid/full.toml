@@ -12,11 +12,11 @@ client_auth = "private_key_jwt"
 dev_port = 8000
 
 [extension.name_localized]
-de = "Projektauswertung"
-"pt-BR" = "Avaliacao de projetos"
+de = "Demo app (de)"
+"pt-BR" = "Demo app (pt-BR)"
 
 [extension.description_localized]
-de = "Auswertungen ueber alle Projekte"
+de = "A demo app (de)"
 
 [consent]
 scopes = ["ext-data-read"]

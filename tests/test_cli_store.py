@@ -413,6 +413,14 @@ def test_the_users_default_platform_file_is_the_last_resort(unconfigured):
     assert unconfigured("store", "status", "--all") == 0
 
 
+def test_a_ci_token_needs_no_issuer(unconfigured):
+    """The issuer is where a stored sign-in lives; a token from the environment has none to look up."""
+    unconfigured.env["APPEXT_STORE_TOKEN"] = "ci-token"
+    unconfigured.on("GET", f"{STORE}/extensions", httpx.Response(200, json=[]))
+    assert unconfigured("store", "status", "--all", "--store-url", API) == 0
+    assert unconfigured.requests[-1].headers["authorization"] == "Bearer ci-token"
+
+
 def test_flag_beats_environment_beats_file(unconfigured, project):
     platform_file(project / "appext.toml", store="https://file.example/api/v1")
     unconfigured.env["APPEXT_STORE_TOKEN"] = "t"
@@ -516,7 +524,7 @@ def test_register_with_a_client_secret_extension_skips_the_key(signed_in):
     signed_in.on("POST", f"{STORE}/extensions", httpx.Response(201, json=stored(clientAuth="client_secret")))
     assert signed_in("store", "register") == 0
     assert [r.method for r in signed_in.requests] == ["POST"]
-    assert "secret is issued" in signed_in.out
+    assert "rotate-secret --out FILE" in signed_in.out
 
 
 def test_a_taken_id_is_reported_with_the_stores_words(signed_in):

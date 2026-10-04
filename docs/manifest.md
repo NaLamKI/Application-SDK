@@ -1,16 +1,18 @@
 # The manifest `extension.toml`
 
-The SDK reads it at start-up; the App Store reads it when you upload it and, after
-approval, builds the Keycloak client, the auth bundle and the catalog entry from it.
+For extension developers (every key and rule of the manifest) and for store implementers, who judge the same file by the same rules.
+
+The SDK reads the manifest at start-up; the App Store reads it when you upload it and, after
+approval, builds the OAuth client, the auth bundle and the catalog entry from it.
 **No secret ever belongs in it** – keys and secrets arrive at run time as files or
 environment variables ([deployment.md](deployment.md)). (A **link** – an entry that only opens a
 web page in the browser – has no server, client or bundle at all: see [Links](#links).)
 
 ```toml
 [extension]
-id = "projektauswertung"
-name = "Project analysis"
-description = "Analyses across all projects"
+id = "reports"
+name = "Project Reports"
+description = "Reports across all projects"
 version = "1.2.0"
 entry = "/"
 icon = "icon.svg"
@@ -21,25 +23,26 @@ client_auth = "private_key_jwt"
 dev_port = 8100
 display = "in_app"
 
-[extension.name_localized]
-de = "Projektauswertung"
-
-[extension.description_localized]
-de = "Auswertungen über alle Projekte"
+# Optional: the name and the description in other languages, one table each, keyed by language code.
+# [extension.name_localized]
+# <language code> = "<translated name>"
+#
+# [extension.description_localized]
+# <language code> = "<translated description>"
 
 [consent]
-scopes = ["ext-data-read"]
+scopes = ["reports-read"]
 
 [[services]]
-name = "fmis"
-audience = "fmis-api"
-scopes = ["ext-stock-read"]
+name = "data"
+audience = "data-api"
+scopes = ["data-read"]
 mode = "user"
 
 [[services]]
 name = "export"
 audience = "export-api"
-scopes = ["svc-export-write"]
+scopes = ["export-write"]
 mode = "service"
 ```
 
@@ -47,52 +50,54 @@ mode = "service"
 
 | Key | Required | Meaning |
 |---|---|---|
-| `id` | yes | `^[a-z][a-z0-9-]{1,38}[a-z0-9]$` – a DNS label. The Keycloak client is `ext-<id>`, the production host `<id>.<apps domain>`. Never changes after registration. |
+| `id` | yes | `^[a-z][a-z0-9-]{1,38}[a-z0-9]$` – a DNS label. The OAuth client is `ext-<id>`, the production host `<id>.<apps domain>`. Never changes after registration. |
 | `name` | yes | Title, **English** (the contract language); translations in `name_localized`. |
 | `description` | no | Short description for the catalog, English. |
 | `version` | yes | Semantic version `MAJOR.MINOR.PATCH`, optional `-pre-release`. Each registration is one version; the lock file pins it. |
-| `entry` | yes | Path on the extension's own origin that the app opens: starts with one `/`, no scheme, no `//`, no backslash or control character. For a **link**: an absolute `https` address ([Links](#links)). |
+| `entry` | yes | Path on the extension's own origin that the host app opens: starts with one `/`, no scheme, no `//`, no backslash or control character. For a **link**: an absolute `https` address ([Links](#links)). |
 | `icon` | yes | A file in the project, relative to the manifest. The extension serves it at `/_sdk/icon` (SVGs are served sandboxed: an icon cannot run script); the catalog's `iconUrl` points there. For a **link**: optional, and an address on the same host as `entry`. |
-| `min_app_version` | no | Older app versions hide the extension. Semantic version. |
+| `min_app_version` | no | Older versions of the host app hide the extension. Semantic version. |
 | `hosts` | no | Further hosts the WebView may load (images, fonts). Lower-case host names, no scheme, port or path. They also widen the default CSP for `img-src` and `font-src` (https only). Not allowed for a link. |
 | `audience_roles` | no | Only people with one of these realm roles see the extension in the catalog. |
-| `client_auth` | no | `private_key_jwt` (default) or `client_secret`. The store allows the latter only when the operator enabled it (`STORE_ALLOW_CLIENT_SECRET`). Not allowed for a link. |
-| `dev_port` | no | Port for the `local` environment, 1024–65535. `appext dev` serves on it; the store registers `http://127.0.0.1:<dev_port>/auth/callback`. Default 8000 – which is where the FMIS backend runs on a developer machine, so the templates use 8100. Not allowed for a link. |
-| `display` | no | Where the app shows the extension: `in_app` (default) or `external`. See [below](#display-in-the-app-or-in-the-browser). A link is always `external`. |
-| `kind` | no | `extension` (default) – a web page with a server of its own that signs people in – or `link`: an entry the app opens in the system browser, with no server behind it. See [Links](#links). |
-| `name_localized`, `description_localized` | no | Tables `language -> text`; the language code is `de` or `pt-BR`; texts are non-empty. |
+| `client_auth` | no | `private_key_jwt` (default) or `client_secret`. A store allows the latter only when its operator enabled it. Not allowed for a link. |
+| `dev_port` | no | Port for the `local` environment, 1024–65535. `appext dev` serves on it; the store registers `http://127.0.0.1:<dev_port>/auth/callback`. Default 8000 – which is where a platform's own API often runs on a developer machine, so the templates use 8100. Not allowed for a link. |
+| `display` | no | Where the host app shows the extension: `in_app` (default) or `external`. See [below](#display-in-the-app-or-in-the-browser). A link is always `external`. |
+| `kind` | no | `extension` (default) – a web page with a server of its own that signs people in – or `link`: an entry the host app opens in the system browser, with no server behind it. See [Links](#links). |
+| `name_localized`, `description_localized` | no | Tables `language -> text`; the language code is two lower-case letters, optionally with a region (`pt-BR`); texts are non-empty. In a new project they are commented out: `<language code> = "<translated name>"`. |
 
 ## `display`: in the app or in the browser
 
 ```toml
-display = "in_app"      # the default: the app shows the extension itself
-display = "external"    # the app hands it to the system browser
+display = "in_app"      # the default: the host app shows the extension itself
+display = "external"    # the host app hands it to the system browser
 ```
 
-`in_app` is what an extension has always been: the phone app shows it in a WebView, the web
-app in a frame under its own header, with the sign-in handed over silently.
+`in_app` is what an extension has always been: the phone app shows it in a WebView, the web app in a
+frame under its own header, with the sign-in handed over silently (where the platform has a host app
+that does so: [authentication.md](authentication.md#browser-mode-and-app-mode)).
 
-`external` makes the app a **jump-off point**: tapping the extension opens `entry` in the
-system browser (a new tab on the web) and that is all the app does. Use it when your service
-is a website or app of its own that is better off in the browser – or when you want people to
-arrive at your own site. What changes:
+`external` makes the host app a **jump-off point**: tapping the extension opens `entry` in the system
+browser (a new tab on the web) and that is all the app does. Use it when your service is a website or
+app of its own that is better off in the browser – or when you want people to arrive at your own site.
+What changes:
 
 * **The page is not embedded.** It may send the person anywhere (your own website, a universal
   link into your own app); the host restrictions of the WebView do not apply, and there is no
   bridge (`AppExt.close()`, `setTitle()` … are quiet no-ops, as in any browser tab).
 * **No sign-in is run when the extension is added.** The page signs the person in when it
   is opened, like any other website; the consent screen comes then. Nothing about the login
-  changes for the extension: it is still an OIDC client with the same scopes.
+  changes for the extension: it is still an OAuth client with the same scopes.
 * **The SDK refuses framing.** The extension answers with `frame-ancestors 'none'`
   (and `X-Frame-Options: DENY`) even where `APPEXT_APP_ORIGINS` names the web app: it is
   never embedded, so the web app need not be allowed to.
-* The catalog and the app say so *before* the tap: the detail screen shows "Opens in – Your
-  browser" and the button reads "Open in browser"; the tile carries a small "leaves the app" sign.
-* In the browser tab `bridge.js` still shows the bar "Back to FMIS" when a web app is
-  configured; `<meta name="appext-shell" content="off">` hides it if your page has its own navigation.
+* The catalog carries `display`, so the host app can say so *before* the tap: that the extension
+  opens in the browser and leaves the app.
+* In the browser tab `bridge.js` still shows the bar "Back to <app name>" when a web app is
+  configured (`APPEXT_APP_ORIGINS`); `<meta name="appext-shell" content="off">` hides it if your page
+  has its own navigation ([bridge.md](bridge.md#in-a-browser-tab-the-way-back)).
 
 `entry` stays a path on the extension's own origin either way (rule 1): an external extension
-still *is* an extension – it has a service in the store, a Keycloak client and a deployment the
+still *is* an extension – it has a service in the store, an OAuth client and a deployment the
 store checks. If you only want to point to a page elsewhere, you need no extension at all: a [link](#links)
 is exactly that.
 
@@ -107,21 +112,20 @@ name = "Our shop"
 description = "Seed and supplies"
 version = "1.0.0"
 kind = "link"
-entry = "https://shop.example.com/fmis"
+entry = "https://shop.example.com/members"
 icon = "https://shop.example.com/static/icon.svg"   # optional: an address on the same host as entry
 
-[extension.name_localized]
-de = "Unser Shop"
+# Optional: [extension.name_localized] / [extension.description_localized], as above
 ```
 
-`kind = "link"` makes the entry a **link**: an entry in the App Store that the FMIS app opens in
-the system browser – and nothing more. There is **no server of the SDK behind it**: no Keycloak
-client, no key, no deployment, no sign-in. The page receives **nothing from FMIS**: no token, no
-person, no farm; the app only opens the address. Use a link to point people to a website or app
+`kind = "link"` makes the entry a **link**: an entry in the App Store that the host app opens in
+the system browser – and nothing more. There is **no server of the SDK behind it**: no OAuth
+client, no key, no deployment, no sign-in. The page receives **nothing from the host app**: no token, no
+person; the app only opens the address. Use a link to point people to a website or app
 that already exists, run by you or by somebody else. `appext new <id> --template link` creates one.
 
 **How it differs from `display = "external"`.** An ordinary extension with `display = "external"`
-is still an extension: it has a server (its `entry` is a path on its own origin), a Keycloak
+is still an extension: it has a server (its `entry` is a path on its own origin), an OAuth
 client, a key and a deployment that the store checks, and the page signs the person in itself.
 A link has none of that – it is just the address.
 
@@ -132,11 +136,11 @@ What the manifest of a link looks like (rule 8):
   most 2048 characters. `http` is allowed only for this machine (`127.0.0.1`, `localhost`, `::1`),
   and a store accepts even that only in a development environment.
 * `icon` is **optional**, and if present an **address by the same rules, on the same host as
-  `entry`** – not a file (a link has no project to serve one from). The app loads icons by itself,
+  `entry`** – not a file (a link has no project to serve one from). The host app loads icons by itself,
   before anyone opened anything, so it does so only from the link's own host. Without an icon the
   app shows its fallback. `Manifest.icon` is `""` then.
 * `display` is `external` and cannot be anything else: leave it out, or write `external`; `in_app`
-  is an error. As for any `external` entry, the app and the catalog say so before the tap.
+  is an error. As for any `external` entry, the catalog says so before the tap.
 * **Refused** (one error at the key, whatever the value): `client_auth`, `dev_port`, `hosts` – they
   belong to a server – and a `[consent]` with scopes or any `[[services]]`: a link asks for no
   permissions and calls no service. An empty `[consent]` table is fine.
@@ -155,8 +159,8 @@ store: [store.md](store.md#a-link).
 
 ## `[consent]`
 
-`scopes` – scopes the person confirms when they first open the extension (Default Client
-Scopes of the Keycloak client). These are scopes that belong to the extension itself, not
+`scopes` – scopes the person confirms when they first open the extension (the default scopes of
+the extension's OAuth client). These are scopes that belong to the extension itself, not
 to a service it calls on someone's behalf.
 
 ## `[[services]]`
@@ -166,19 +170,20 @@ One entry per service the extension calls (`ext.service("<name>")`).
 | Key | Meaning |
 |---|---|
 | `name` | The name in code: `^[a-z][a-z0-9_]*$`, unique. Sets the variable `APPEXT_SERVICE_<NAME>_URL`. |
-| `audience` | The Keycloak client of the target service, not empty. Must exist in the store's service catalog. |
+| `audience` | The OAuth client of the target service (what its tokens carry in `aud`), not empty. Must exist in the store's service catalog. |
 | `scopes` | At least one. The scopes of *this* service that the exchanged token carries. |
 | `mode` | `user` – on behalf of the signed-in person (token exchange); `service` – as the extension itself (client credentials). Default `user`. |
 
 For `mode = "user"` the SDK asks for these scopes **at sign-in**, so that the consent screen
-already covers every later exchange (Keycloak lets an exchange pass only for scopes the
+already covers every later exchange (an issuer lets an exchange pass only for scopes the
 person agreed to). To see which scopes a service offers: `appext store services`.
 
 ## The rules
 
 `appext manifest check` applies rules 1–6 and 8; the store applies the same when you upload and
-adds rule 7. The conformance cases in `sdk/conformance/manifests/` run against both
-implementations, so the verdict is the same everywhere.
+adds rule 7. The conformance cases in [`conformance/manifests/`](../conformance/manifests/README.md)
+run against both implementations, so the verdict is the same everywhere – the README there lists the
+exact patterns and the error paths.
 
 1. `id`, `name`, `version`, `entry`, `icon` are present; `id` matches its pattern; `version`
    is semantic; `entry` is a path on the own origin. (A link: rule 8 – `icon` is optional and
@@ -213,10 +218,10 @@ the manifest breaks 2 rule(s):
 
 ## What changes when
 
-A new version with **the same scopes and services** goes live after the deployment check,
-without review. **More** scopes or services send it back to review; until a reviewer
-approves, the old version stays in the catalog. At start the SDK compares the manifest with
-the **lock file** of the auth bundle and refuses to run if the manifest asks for more than
+A new version that asks for **nothing more** – the same scopes and services, no further `hosts`, the same
+`client_auth` – goes live after the deployment check, without review. **More** sends it back to review;
+until a reviewer approves, the old version stays in the catalog. At start the SDK compares the manifest with the
+**lock file** of the auth bundle and refuses to run if the manifest asks for more than
 was approved (`LockError`) – a forgotten review shows up before the deployment goes live,
 not as a failing token exchange in production. A link has no lock file: nothing runs for it
 and nothing is exchanged.

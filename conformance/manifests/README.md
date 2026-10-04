@@ -1,8 +1,9 @@
 # Shared manifest cases
 
-The store (`backend/app/store/manifest.py`) and the SDK (`appext.manifest`) judge an
-`extension.toml` by the **same rules 1–6** of `concepts/app-store.md` §3. Both test
-suites run these cases. Rule 7 (the service catalog) is the store's alone and has no
+The App Store and the SDK (`appext.manifest`) judge an `extension.toml` by the **same rules 1–6 and 8**
+([docs/manifest.md](../../docs/manifest.md); the store's side is in
+[docs/platform-contract/app-store-api.md](../../docs/platform-contract/app-store-api.md)). **A platform's store
+runs these cases in its own test suite** – that is how it stays in step with the SDK. Rule 7 (the service catalog) is the store's alone and has no
 case here.
 
 * `valid/*.toml` – must parse without error.

@@ -748,8 +748,8 @@ def configure_test_environment(
     Removes every `APPEXT_*` variable (a shell that exports a deployment's settings must not change
     a test), then sets what a local run needs: `APPEXT_ENV=local`, an issuer, the host app's return
     address and, for every service the manifest declares, `APPEXT_SERVICE_<NAME>_URL` – so that
-    `service_mocks` knows where the service "is". No platform file is read and nothing leaves the machine.
-    Returns what it set.
+    `service_mocks` knows where the service "is". Sets `APPEXT_PLATFORM=none`, so no platform file is read
+    (the project's `appext.toml` stays out of the test), and nothing leaves the machine. Returns what it set.
 
         # tests/conftest.py
         from appext.testing import configure_test_environment
@@ -763,6 +763,7 @@ def configure_test_environment(
         values["APPEXT_APP_REDIRECT_URI"] = app_redirect_uri
     for service in load_manifest(manifest).services:
         values[f"APPEXT_SERVICE_{service.env_name}_URL"] = f"https://{service.name.replace('_', '-')}.test/api"
+    values["APPEXT_PLATFORM"] = "none"  # no platform file: a test never depends on the one next to the manifest
     target.update(values)
     return values
 

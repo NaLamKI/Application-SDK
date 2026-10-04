@@ -231,7 +231,7 @@ def test_manifest_check_says_where_the_app_shows_the_extension(run, project):
 
 def test_manifest_check_of_an_ordinary_extension_has_no_kind_or_entry_line(run, project):
     assert run("manifest", "check") == 0
-    assert "kind " not in run.out and "entry " not in run.out and "Keycloak client ext-demo" in run.out
+    assert "kind " not in run.out and "entry " not in run.out and "OAuth client ext-demo" in run.out
 
 
 def test_manifest_check_names_a_link_and_its_address(run, link_project):

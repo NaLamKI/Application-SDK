@@ -250,3 +250,18 @@ async def test_client_authentication_failures_are_401(idp):
     assert (await client.post(idp.token_endpoint, data=form)).status_code == 401
     assert (await client.post(idp.token_endpoint, data={**form, "client_secret": "nope"})).status_code == 401
     assert (await client.post(idp.token_endpoint, data={**form, "client_assertion_type": "x", "client_assertion": "y"})).status_code == 401
+
+
+def test_the_test_environment_is_independent_of_the_machine(tmp_path):
+    from appext.testing import configure_test_environment
+
+    project = write_project(tmp_path)
+    (project.parent / "appext.toml").write_text('[platform]\nissuer = "https://real.example/realms/x"\napp_redirect_uri = "real.app:/cb"\n')
+    environ = {"APPEXT_ISSUER": "https://shell.example/realms/y", "APPEXT_STORE_URL": "https://shell.example/api", "OTHER": "kept"}
+    values = configure_test_environment(project, environ=environ, app_redirect_uri=None)
+    assert environ["OTHER"] == "kept" and "APPEXT_STORE_URL" not in environ, "the shell's APPEXT_* variables are gone"
+    assert values["APPEXT_ISSUER"] == "https://idp.test/realms/test" and values["APPEXT_PLATFORM"] == "none"
+    assert values["APPEXT_SERVICE_PROJECTS_URL"] == "https://projects.test/api"
+    settings = Extension.from_manifest(project, environ=environ).settings
+    assert settings.issuer == "https://idp.test/realms/test", "not the file's, not the shell's"
+    assert settings.app_redirect_uri is None, "the file's return address does not leak in"
