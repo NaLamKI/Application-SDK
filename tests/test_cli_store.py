@@ -17,9 +17,9 @@ import pytest
 from appext.cli import Context, main
 from appext.cli import keys as cli_keys
 
-ISSUER = "http://127.0.0.1:58080/realms/fmis"
+ISSUER = "http://127.0.0.1:58080/realms/example"
 API = "http://127.0.0.1:8000/api/v1"
-STORE = f"{API}/store"  # the store API lives under <api>/store (concepts/app-store.md §7)
+STORE = f"{API}/store"  # the store API lives under <store_url>/store (docs/platform-contract/app-store-api.md)
 TOKEN_URL = f"{ISSUER}/protocol/openid-connect/token"
 DEVICE_URL = f"{ISSUER}/protocol/openid-connect/auth/device"
 
@@ -39,7 +39,7 @@ id = "shop-link"
 name = "Shop"
 version = "1.0.0"
 kind = "link"
-entry = "https://shop.example.com/fmis"
+entry = "https://shop.example.com/app"
 """
 
 
@@ -75,7 +75,8 @@ class World:
         self.responses: list = []  # callables or Responses, consumed in order per route
         self.routes: dict[tuple[str, str], list] = {}
         self.opened: list[str] = []
-        self.env: dict[str, str] = {"XDG_CONFIG_HOME": str(self.home)}
+        # The platform comes from the environment here; a file of the project is tested on its own below.
+        self.env: dict[str, str] = {"XDG_CONFIG_HOME": str(self.home), "APPEXT_ISSUER": ISSUER, "APPEXT_STORE_URL": API}
 
     # -- mock plumbing
     def on(self, method: str, url: str, *responses) -> None:
@@ -154,7 +155,7 @@ def signed_in_link(world, link_project) -> World:
 
 def stored_link(**fields) -> dict:
     """What the store answers for a link: no client, no key, the same address in every environment."""
-    address = {"entry": "https://shop.example.com/fmis", "callback": None}
+    address = {"entry": "https://shop.example.com/app", "callback": None}
     return {"id": "shop-link", "status": "DRAFT", "name": "Shop", "version": "1.0.0", "kind": "link",
             "clientId": None, "clientAuth": None, "hasKey": False,
             "versions": [{"version": "1.0.0", "status": "DRAFT"}], "urls": {"local": address, "prod": address}, **fields}
@@ -351,6 +352,105 @@ def test_store_url_from_flag_or_environment(world):
     assert world("store", "status", "--store-url", "https://store.example.com/api/v1") == 0
 
 
+# --- which platform the commands talk to ---------------------------------------------------------
+
+PLATFORM_FILE = """\
+[platform]
+name = "Example Platform"
+issuer = "{issuer}"
+store_url = "{store}"
+cli_client_id = "{client}"
+"""
+
+
+def platform_file(path: Path, *, issuer=ISSUER, store=API, client="appext-cli") -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(PLATFORM_FILE.format(issuer=issuer, store=store, client=client))
+    return path
+
+
+@pytest.fixture
+def unconfigured(world) -> World:
+    """No environment variables, no platform file: nothing says where the sign-in and the store are."""
+    world.env = {"XDG_CONFIG_HOME": str(world.home)}
+    return world
+
+
+def test_nothing_is_guessed_and_the_error_says_how_to_configure(unconfigured):
+    assert unconfigured("store", "status", "--all") == 1
+    for way in ("--store-url", "APPEXT_STORE_URL", "appext.toml", "--platform"):
+        assert way in unconfigured.err
+    assert unconfigured.requests == []
+    assert unconfigured("store", "login") == 1
+    for way in ("--issuer", "APPEXT_ISSUER", "appext.toml"):
+        assert way in unconfigured.err
+
+
+def test_the_projects_platform_file_names_the_issuer_and_the_store(unconfigured, project):
+    platform_file(project / "appext.toml")
+    unconfigured.sign_in()
+    unconfigured.on("GET", f"{STORE}/extensions", httpx.Response(200, json=[]))
+    assert unconfigured("store", "status", "--all") == 0
+    assert str(unconfigured.requests[-1].url) == f"{STORE}/extensions", "the store of the file was asked"
+
+
+def test_a_named_platform_lives_in_the_config_directory(unconfigured):
+    platform_file(unconfigured.home / "appext" / "platforms" / "staging.toml", store="https://store.staging.example/api/v1",
+                  issuer="https://auth.staging.example/realms/staging")
+    unconfigured.env["APPEXT_STORE_TOKEN"] = "t"
+    unconfigured.on("GET", "https://store.staging.example/api/v1/store/extensions", httpx.Response(200, json=[]))
+    assert unconfigured("store", "status", "--all", "--platform", "staging") == 0
+    unconfigured.env["APPEXT_PLATFORM"] = "staging"
+    assert unconfigured("store", "status", "--all") == 0
+    assert unconfigured("store", "status", "--all", "--platform", "nobody-made-this") == 1
+    assert "does not exist" in unconfigured.err
+
+
+def test_the_users_default_platform_file_is_the_last_resort(unconfigured):
+    platform_file(unconfigured.home / "appext" / "platform.toml", store="https://store.default.example/api/v1")
+    unconfigured.env["APPEXT_STORE_TOKEN"] = "t"
+    unconfigured.on("GET", "https://store.default.example/api/v1/store/extensions", httpx.Response(200, json=[]))
+    assert unconfigured("store", "status", "--all") == 0
+
+
+def test_flag_beats_environment_beats_file(unconfigured, project):
+    platform_file(project / "appext.toml", store="https://file.example/api/v1")
+    unconfigured.env["APPEXT_STORE_TOKEN"] = "t"
+    unconfigured.on("GET", "https://file.example/api/v1/store/extensions", httpx.Response(200, json=[]))
+    assert unconfigured("store", "status", "--all") == 0
+    unconfigured.env["APPEXT_STORE_URL"] = "https://env.example/api/v1"
+    unconfigured.on("GET", "https://env.example/api/v1/store/extensions", httpx.Response(200, json=[]))
+    assert unconfigured("store", "status", "--all") == 0
+    unconfigured.on("GET", "https://flag.example/api/v1/store/extensions", httpx.Response(200, json=[]))
+    assert unconfigured("store", "status", "--all", "--store-url", "https://flag.example/api/v1") == 0
+    assert [str(r.url) for r in unconfigured.requests][-3:] == [
+        "https://file.example/api/v1/store/extensions",
+        "https://env.example/api/v1/store/extensions",
+        "https://flag.example/api/v1/store/extensions",
+    ]
+
+
+def test_a_broken_platform_file_is_reported_with_its_problems(unconfigured, project):
+    (project / "appext.toml").write_text('[platform]\nissuer = "ftp://nope"\nsurprise = 1\n')
+    assert unconfigured("store", "status", "--all") == 1
+    assert "platform.issuer" in unconfigured.err and "platform.surprise" in unconfigured.err
+
+
+def test_login_uses_the_cli_client_of_the_platform(unconfigured, project):
+    platform_file(project / "appext.toml", client="acme-cli")
+    unconfigured.on("GET", f"{ISSUER}/.well-known/openid-configuration", httpx.Response(200, json=DISCOVERY))
+    unconfigured.on("POST", DEVICE_URL, httpx.Response(200, json=GRANT))
+    unconfigured.on("POST", TOKEN_URL, granted())
+    assert unconfigured("store", "login") == 0
+    start = [r for r in unconfigured.requests if r.method == "POST"][0]
+    assert parse_qs(start.content.decode())["client_id"] == ["acme-cli"]
+    # the environment and the option are stronger than the file
+    unconfigured.env["APPEXT_CLI_CLIENT_ID"] = "env-cli"
+    unconfigured.on("POST", TOKEN_URL, granted())
+    assert unconfigured("store", "login", "--client-id", "flag-cli") == 0
+    assert parse_qs([r for r in unconfigured.requests if r.method == "POST"][-2].content.decode())["client_id"] == ["flag-cli"]
+
+
 # --- register, key, submit --------------------------------------------------------------------
 
 
@@ -461,8 +561,8 @@ def test_register_a_link_uploads_the_manifest_and_nothing_else(signed_in_link):
     out = signed_in_link.out
     assert "Link registered: shop-link 1.0.0" in out and "no server, no key and no deployment" in out
     assert "appext store submit" in out and "reviewer approves" in out and "appext store verify" in out
-    assert "  kind       link" in out and "  entry      https://shop.example.com/fmis" in out
-    assert "client" not in out and "None" not in out and out.count("https://shop.example.com/fmis") == 1
+    assert "  kind       link" in out and "  entry      https://shop.example.com/app" in out
+    assert "client" not in out and "None" not in out and out.count("https://shop.example.com/app") == 1
     assert signed_in_link.err == ""  # not even a warning about the missing key
 
 
@@ -491,7 +591,7 @@ def test_register_checks_the_rules_of_a_link_before_the_round_trip(signed_in_lin
 def test_submit_and_status_of_a_link_show_its_address(signed_in_link):
     signed_in_link.on("POST", f"{STORE}/extensions/shop-link/submit", httpx.Response(200, json=stored_link(status="SUBMITTED")))
     assert signed_in_link("store", "submit") == 0
-    assert "[SUBMITTED]" in signed_in_link.out and "entry      https://shop.example.com/fmis" in signed_in_link.out
+    assert "[SUBMITTED]" in signed_in_link.out and "entry      https://shop.example.com/app" in signed_in_link.out
     signed_in_link.on("GET", f"{STORE}/extensions/shop-link", httpx.Response(200, json=stored_link(
         status="LIVE", liveVersion="1.0.0", versions=[{"version": "1.0.0", "status": "LIVE"}])))
     assert signed_in_link("store", "status") == 0
@@ -621,11 +721,11 @@ def test_a_suspended_extension_says_so(signed_in):
 
 def test_services_lists_audiences_and_scopes(world):
     world.sign_in()
-    world.on("GET", f"{STORE}/services", httpx.Response(200, json=[{"audience": "fmis-api", "title": "FMIS", "scopes": [
+    world.on("GET", f"{STORE}/services", httpx.Response(200, json=[{"audience": "data-api", "title": "Data", "scopes": [
         {"name": "ext-data-read", "consentText": "Read your data", "restricted": False},
         {"name": "ext-secret", "consentText": "More", "restricted": True}]}]))
     assert world("store", "services") == 0
-    assert "fmis-api  FMIS" in world.out and "Read your data" in world.out and "[restricted" in world.out
+    assert "data-api  Data" in world.out and "Read your data" in world.out and "[restricted" in world.out
 
 
 # --- bundle ----------------------------------------------------------------------------------

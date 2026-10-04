@@ -1,4 +1,4 @@
-# The base image comes from `sdk/docker/build.sh`; point this at your registry's copy
+# The base image comes from `docker/build.sh` of the SDK; point this at your registry's copy
 # with --build-arg APPEXT_IMAGE=registry.example.com/appext/python:0.1.0-py3.12
 ARG APPEXT_IMAGE=appext/python:0.1.0-py3.12
 

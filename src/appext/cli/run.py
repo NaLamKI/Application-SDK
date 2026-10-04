@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 from .context import CliError, Context
 
 if TYPE_CHECKING:  # `appext health` runs every few seconds in a container: keep its imports to the minimum
+    from appext.platform import Platform
+
     from .project import Project
 
 DEFAULT_PORT = 8000
@@ -53,15 +55,26 @@ def appext_only(ctx: Context, values: dict[str, str], source: Path) -> dict[str,
     return {k: v for k, v in values.items() if k.startswith("APPEXT_")}
 
 
-def local_defaults(project: Project, *, host: str, port: int, key_file: Path, key_id: str, session_key_file: Path) -> dict[str, str]:
-    """What `appext dev` adds to the SDK's own local defaults (issuer, redirect URI, service URLs):
-    the address it serves on, the dev key and an in-memory session store."""
+def local_defaults(project: Project, platform: Platform, *, host: str, port: int, key_file: Path, key_id: str,
+                   session_key_file: Path) -> dict[str, str]:
+    """What `appext dev` sets for the extension: the address it serves on, the dev key, an in-memory
+    session store – and what the platform file knows (issuer, the host app's return address, the URLs
+    of target services, the app's name)."""
     defaults = {
         "APPEXT_ENV": "local",
         "APPEXT_PUBLIC_URL": f"http://{host}:{port}",
         "APPEXT_SESSION_STORE": "memory",
         "APPEXT_SESSION_KEY_FILE": str(session_key_file),
     }
+    if platform.issuer:
+        defaults["APPEXT_ISSUER"] = platform.issuer
+    if platform.app_redirect_uri:
+        defaults["APPEXT_APP_REDIRECT_URI"] = platform.app_redirect_uri
+    if platform.name:
+        defaults["APPEXT_APP_NAME"] = platform.name
+    for service in project.services:
+        if service.audience in platform.services:
+            defaults[f"APPEXT_SERVICE_{service.env_name}_URL"] = platform.services[service.audience]
     if project.client_auth == "private_key_jwt":
         defaults["APPEXT_CLIENT_KEY_FILE"] = str(key_file)
         defaults["APPEXT_CLIENT_KEY_ID"] = key_id
@@ -73,15 +86,17 @@ def dev(args, ctx: Context) -> int:
 
     from .keys import ensure_dev_key, ensure_dev_session_key
     from .project import load_project, refuse_link
+    from .settings import resolve
 
     project = load_project(ctx, args.manifest)
     refuse_link(project, "nothing to run")  # before a key is made or a port is picked
+    platform = resolve(args, ctx, project_dir=project.root)
     port = args.port or project.dev_port
     key_file, jwk_file, created = ensure_dev_key(project.root / ".appext")
     session_key_file = ensure_dev_session_key(project.root / ".appext")
     key_id = json.loads(jwk_file.read_text(encoding="utf-8"))["kid"]
 
-    layered = local_defaults(project, host=args.host, port=port, key_file=key_file, key_id=key_id,
+    layered = local_defaults(project, platform, host=args.host, port=port, key_file=key_file, key_id=key_id,
                              session_key_file=session_key_file)
     for env_file in args.env_file:
         source = ctx.path(env_file)
@@ -102,9 +117,9 @@ def dev(args, ctx: Context) -> int:
             ctx.warn(f"APPEXT_SERVICE_{service.env_name}_URL is not set – calls to {service.name!r} will fail "
                      "(set it in the environment or an --env-file)")
     ctx.say("")
-    ctx.say("Not known to the local store yet? Register it, then have a reviewer approve it:")
+    ctx.say("Not known to the platform's store yet? Register it, then have a reviewer approve it:")
     ctx.say("  appext store login && appext store register && appext store submit")
-    ctx.say("or, for a Keycloak of your own: appext keycloak export --out .appext/realm-ext.json --dev-user")
+    ctx.say("or, with a Keycloak of your own: appext keycloak export --out .appext/realm-ext.json --dev-user")
     ctx.say("")
 
     package = project.root / args.app.partition(":")[0].split(".")[0]

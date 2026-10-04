@@ -44,17 +44,17 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 
-from .config import ConfigError, ExtensionSettings
+from .config import DEFAULT_APP_MARKER, ConfigError, ExtensionSettings
 from .jwks import JWKSCache, JWKSUnavailable, TokenInvalid, decode_jwt
 from .manifest import Manifest
 from .session import Session, SessionStore
 
 log = logging.getLogger("appext")
 
-#: The app appends this to the user agent of its WebView. Not a security feature,
-#: only the switch for the redirect URI (a forged marker yields an address the
-#: forger's browser cannot open).
-APP_MARKER = "FMIS-App-WebView/"
+#: The host app appends `<Name>-App-WebView/<version>` to the user agent of its WebView. Not a
+#: security feature, only the switch for the redirect URI (a forged marker yields an address the
+#: forger's browser cannot open). `APPEXT_APP_MARKER` replaces the part looked for.
+APP_MARKER = DEFAULT_APP_MARKER
 
 TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange"
 BACKCHANNEL_EVENT = "http://schemas.openid.net/event/backchannel-logout"
@@ -134,8 +134,8 @@ class LogoutTokenError(AuthError):
 # --- small pure helpers -------------------------------------------------------------------------------
 
 
-def is_app_mode(user_agent: str | None) -> bool:
-    return bool(user_agent) and APP_MARKER in user_agent  # type: ignore[operator]
+def is_app_mode(user_agent: str | None, marker: str = APP_MARKER) -> bool:
+    return bool(user_agent) and bool(marker) and marker in user_agent  # type: ignore[operator]
 
 
 def safe_return_to(value: str | None, default: str = "/") -> str:
@@ -385,7 +385,9 @@ class AuthCore:
         app_mode: bool | None = None,
     ) -> LoginRedirect:
         endpoints = await self.discovery()
-        app = is_app_mode(user_agent) if app_mode is None else app_mode
+        # Only where the host app has a return address of its own; otherwise this is a website.
+        app = (is_app_mode(user_agent, self.settings.app_marker) if app_mode is None else app_mode) \
+            and bool(self.settings.app_redirect_uri)
         state, nonce, verifier = secrets.token_urlsafe(24), secrets.token_urlsafe(24), secrets.token_urlsafe(48)
         redirect_uri = self.settings.redirect_uri(app)
         await self.store.put_transaction(

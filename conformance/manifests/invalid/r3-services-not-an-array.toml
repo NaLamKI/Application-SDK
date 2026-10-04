@@ -1,4 +1,4 @@
-services = "fmis"
+services = "data"
 
 [extension]
 id = "demo-app"

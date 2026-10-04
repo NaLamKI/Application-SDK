@@ -1,0 +1,13 @@
+# The platform this project is written for: its OAuth service and its App Store. Not part of the
+# store contract (extension.toml is) and no secret ever belongs here. Every key is explained in
+# docs/platform.md of the SDK.
+
+[platform]
+# name = "Example Platform"
+# issuer = "https://auth.example.com/realms/example"      # the OAuth / OpenID Connect service
+# store_url = "https://api.example.com/api/v1"           # the App Store API
+
+[platform.starter]
+service = "data"
+audience = "data-api"
+scope = "data-read"

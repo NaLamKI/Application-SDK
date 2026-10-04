@@ -294,7 +294,7 @@ def test_rule6_unknown_top_level_section():
 
 # -- rule 8: a link ---------------------------------------------------------------------------------------------------------------
 
-LINK = {"extension": {"id": "demo-link", "name": "Demo link", "version": "1.0.0", "kind": "link", "entry": "https://shop.example.com/fmis?ref=app#top"}}
+LINK = {"extension": {"id": "demo-link", "name": "Demo link", "version": "1.0.0", "kind": "link", "entry": "https://shop.example.com/app?ref=app#top"}}
 
 
 def link(**changes):
@@ -317,7 +317,7 @@ def test_an_ordinary_extension_is_of_kind_extension():
 def test_a_link_has_no_server_behind_it():
     m = parse_manifest(LINK)
     assert m.kind == "link" and m.is_link
-    assert m.entry == "https://shop.example.com/fmis?ref=app#top"
+    assert m.entry == "https://shop.example.com/app?ref=app#top"
     assert m.icon == ""  # optional for a link, and an address instead of a file
     assert m.display == "external" and m.external  # the only way a link is shown
     assert m.hosts == () and m.dev_port is None and m.consent.scopes == () and m.services == ()

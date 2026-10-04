@@ -42,7 +42,7 @@ mode = "service"
 """
 
 PUBLIC_URL = "https://demo.apps.test"
-APP_REDIRECT = "org.agrifooddata.apps.fmis.web:/callback"
+APP_REDIRECT = "com.example.app:/callback"
 ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>'
 
 
@@ -137,6 +137,7 @@ def build_env(
         "APPEXT_CLIENT_KEY_FILE": str(key_file),
         "APPEXT_SERVICE_PROJECTS_URL": "https://projects.test/api",
         "APPEXT_SERVICE_EXPORT_URL": "https://export.test",
+        "APPEXT_APP_REDIRECT_URI": APP_REDIRECT,
         **(extra_environ or {}),
     }
     if client_auth == "client_secret":
@@ -151,7 +152,7 @@ def build_env(
         secret="s3cret-value" if client_auth == "client_secret" else None,
         default_scopes={"ext-data-read"},
         optional_scopes={"svc-projects-read", "svc-export-write", "profile", "email"},
-        scope_audiences={"ext-data-read": "fmis-api", "svc-projects-read": "projects-api", "svc-export-write": "export-api"},
+        scope_audiences={"ext-data-read": "data-api", "svc-projects-read": "projects-api", "svc-export-write": "export-api"},
         service_account=True,
         backchannel_logout_url=f"{PUBLIC_URL}/auth/backchannel-logout",
         post_logout_redirect_uris={f"{PUBLIC_URL}/"},

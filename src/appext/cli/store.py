@@ -16,8 +16,8 @@ from urllib.parse import urlparse
 from . import login as signin
 from .context import CliError, Context
 from .keys import JWK_FILE, load_public_jwk, thumbprint, write_secret
-from .parser import DEFAULT_ISSUER, DEFAULT_STORE_URL
 from .project import extension_id, load_project, manifest_path
+from .settings import require_issuer, require_store_url, resolve
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
@@ -32,16 +32,30 @@ def warn_if_unencrypted(ctx: Context, url: str, what: str) -> None:
 # --- Settings ------------------------------------------------------------
 
 
+def _platform(args, ctx: Context):
+    """The platform for this command; a manifest named on the command line brings its own `appext.toml`."""
+    manifest = getattr(args, "manifest", None)
+    project_dir = None
+    if manifest:
+        given = ctx.path(manifest)
+        project_dir = given if given.is_dir() else given.parent
+    return resolve(args, ctx, project_dir=project_dir)
+
+
 def store_url(args, ctx: Context) -> str:
-    return (args.store_url or ctx.env.get("APPEXT_STORE_URL") or DEFAULT_STORE_URL).rstrip("/")
+    return require_store_url(_platform(args, ctx))
 
 
 def issuer(args, ctx: Context) -> str:
-    return (args.issuer or ctx.env.get("APPEXT_ISSUER") or DEFAULT_ISSUER).rstrip("/")
+    return require_issuer(_platform(args, ctx))
 
 
 def default_environment(url: str) -> str:
-    """A store on this machine serves the `local` environment; a remote one is production."""
+    """A store on this machine serves the `local` environment; a remote one is production.
+
+    These are the names of the environments the reference store knows; a store that names its
+    environments differently is addressed with `--env`.
+    """
     return "local" if urlparse(url).hostname in LOCAL_HOSTS else "prod"
 
 
@@ -140,8 +154,7 @@ def show(ctx: Context, extension: dict) -> None:
 def login(args, ctx: Context) -> int:
     realm = issuer(args, ctx)
     warn_if_unencrypted(ctx, realm, "the sign-in at")
-    entry = signin.device_login(ctx, realm, args.client_id or ctx.env.get("APPEXT_CLI_CLIENT_ID") or signin.DEFAULT_CLIENT_ID,
-                                open_browser=not args.no_browser)
+    entry = signin.device_login(ctx, realm, _platform(args, ctx).cli_client_id, open_browser=not args.no_browser)
     signin.save_credentials(ctx, realm, entry)
     ctx.say(f"Signed in as {signin.describe(entry)}.")
     if "no store role" in signin.describe(entry):

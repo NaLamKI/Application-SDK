@@ -17,28 +17,25 @@ async function getJson(path) {
   return response.json();
 }
 
-function render(me, fields) {
+function render(me, items) {
   root.replaceChildren(
     node("h1", document.title),
     node("p", `Signed in as ${me.name || me.email || me.sub}`, "muted"),
-    node("h2", "Your fields"),
+    node("h2", "Your items"),
   );
-  if (fields.length === 0) {
-    root.append(node("p", "No fields yet.", "muted"));
+  if (items.length === 0) {
+    root.append(node("p", "No items yet.", "muted"));
     return;
   }
   const list = document.createElement("ul");
-  for (const field of fields) {
-    const area = field.area == null ? "" : ` – ${field.area} ${field.areaUnit || ""}`.trimEnd();
-    list.append(node("li", (field.name || field.id) + area));
-  }
+  for (const item of items) list.append(node("li", item.name || item.id));
   root.append(list);
 }
 
 async function main() {
   try {
-    const [me, fields] = await Promise.all([getJson("/api/me"), getJson("/api/fields")]);
-    render(me, fields);
+    const [me, items] = await Promise.all([getJson("/api/me"), getJson("/api/items")]);
+    render(me, items);
   } catch (error) {
     root.replaceChildren(node("p", `Something went wrong: ${error.message}`, "error"));
   }

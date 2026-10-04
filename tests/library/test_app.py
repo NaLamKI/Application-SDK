@@ -578,10 +578,10 @@ async def test_proxy_headers_only_from_trusted_proxies(tmp_path, trusted, expect
         await client.aclose()
 
 
-# -- embedding in the FMIS web app -----------------------------------------------------------------------
+# -- embedding in the host's web app -----------------------------------------------------------------------
 
 
-WEB_APP = "https://app.fmis.test"
+WEB_APP = "https://app.example.test"
 
 
 def web_app_env(tmp_path) -> Env:
@@ -624,7 +624,7 @@ async def test_an_extension_the_app_opens_in_the_browser_is_never_framed(tmp_pat
 
 
 async def test_an_external_extension_still_gets_the_way_back_to_the_web_app(tmp_path):
-    """The bar "Back to FMIS" in a browser tab needs the web app's address – external or not."""
+    """The bar "Back to the app" in a browser tab needs the web app's address – external or not."""
     env = build_env(tmp_path, display="external", extra_environ={"APPEXT_APP_ORIGINS": WEB_APP})
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=env.app), base_url="https://demo.apps.test") as client:
         script = (await client.get("/_sdk/bridge.js")).text
@@ -646,6 +646,30 @@ async def test_bridge_js_knows_the_web_app_and_the_name_of_the_extension(tmp_pat
     assert first.startswith("window.__APPEXT_CONFIG__ = ")
     config = __import__("json").loads(first.removeprefix("window.__APPEXT_CONFIG__ = ").removesuffix(";"))
     assert config["appOrigins"] == [WEB_APP] and config["name"] == env.ext.manifest.name
+
+
+async def test_bridge_js_carries_what_the_platform_says_about_its_app(tmp_path):
+    env = build_env(tmp_path, extra_environ={
+        "APPEXT_APP_ORIGINS": WEB_APP,
+        "APPEXT_APP_NAME": "Acme",
+        "APPEXT_APP_MARKER": "AcmeShell/",
+        "APPEXT_APP_BACK_LABELS": '{"en": "Return to {app}"}',
+        "APPEXT_APP_ACCENT": "#0b9f6a",
+    })
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=env.app), base_url="https://demo.apps.test") as client:
+        script = (await client.get("/_sdk/bridge.js")).text
+    config = __import__("json").loads(script.splitlines()[0].removeprefix("window.__APPEXT_CONFIG__ = ").removesuffix(";"))
+    assert config["appName"] == "Acme" and config["appMarker"] == "AcmeShell/"
+    assert config["backLabels"] == {"en": "Return to {app}"} and config["appAccent"] == "#0b9f6a"
+
+
+async def test_the_bridge_config_is_neutral_where_the_platform_says_nothing(tmp_path):
+    env = web_app_env(tmp_path)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=env.app), base_url="https://demo.apps.test") as client:
+        script = (await client.get("/_sdk/bridge.js")).text
+    config = __import__("json").loads(script.splitlines()[0].removeprefix("window.__APPEXT_CONFIG__ = ").removesuffix(";"))
+    assert config["appName"] == "" and config["appMarker"] == "-App-WebView/"
+    assert config["backLabels"] == {} and config["appAccent"] == ""
 
 
 async def test_every_html_page_loads_the_bridge_without_the_author_asking(env: Env):
@@ -679,7 +703,7 @@ id = "shop-link"
 name = "Shop"
 version = "1.0.0"
 kind = "link"
-entry = "https://shop.example.com/fmis"
+entry = "https://shop.example.com/app"
 """
 
 

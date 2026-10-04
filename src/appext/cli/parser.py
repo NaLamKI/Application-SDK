@@ -6,15 +6,16 @@ from __future__ import annotations
 
 import argparse
 
-DEFAULT_ISSUER = "http://127.0.0.1:58080/realms/fmis"
-DEFAULT_STORE_URL = "http://127.0.0.1:8000/api/v1"
+from .settings import platform_option
+
 TEMPLATES = ("spa", "htmx", "link")
 
 
 def _store_options() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--store-url", help=f"App Store API base (APPEXT_STORE_URL, default {DEFAULT_STORE_URL})")
-    common.add_argument("--issuer", help=f"Keycloak realm of the sign-in (APPEXT_ISSUER, default {DEFAULT_ISSUER})")
+    common.add_argument("--store-url", help="App Store API base, e.g. https://api.example.com/api/v1 (APPEXT_STORE_URL, or store_url in the platform file)")
+    common.add_argument("--issuer", help="the OAuth / OpenID Connect service, e.g. https://auth.example.com/realms/example (APPEXT_ISSUER, or issuer in the platform file)")
+    platform_option(common)
     return common
 
 
@@ -90,7 +91,7 @@ def _add_store(sub: argparse._SubParsersAction) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="appext",
-        description="Build, run and publish extensions for the FMIS app.",
+        description="Build, run and publish extensions for a platform that follows the reference architecture.",
     )
     parser.add_argument("--version", action="store_true", help="print the SDK version")
     sub = parser.add_subparsers(dest="command", metavar="<command>")
@@ -100,6 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--template", choices=TEMPLATES, default="spa", help="spa (Vite), htmx (Jinja pages) or link (an entry that opens a web page in the browser: just a manifest); default spa")
     p.add_argument("--dir", default=".", help="directory to create the project in (default .)")
     p.add_argument("--name", help="display name (default: derived from the id)")
+    platform_option(p)
     p.set_defaults(handler="appext.cli.scaffold:new")
 
     p = sub.add_parser("dev", help="run the extension in browser mode with reload")
@@ -110,6 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--env-file", action="append", default=[], metavar="FILE",
                    help="KEY=VALUE lines that override the local defaults (e.g. auth-bundle/appext.env); repeatable")
     p.add_argument("--no-reload", action="store_true")
+    platform_option(p)
     p.set_defaults(handler="appext.cli.run:dev")
 
     p = sub.add_parser("serve", help="production entry: run an ASGI app with uvicorn")
@@ -140,17 +143,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true")
     p.set_defaults(handler="appext.cli.keys:session")
 
-    kc = sub.add_parser("keycloak", help="Keycloak helpers").add_subparsers(dest="keycloak_command", required=True, metavar="<command>")
+    kc = sub.add_parser("keycloak", help="helpers for a local Keycloak (when the platform's OAuth service is Keycloak)").add_subparsers(dest="keycloak_command", required=True, metavar="<command>")
     p = kc.add_parser("export", help="realm import for a LOCAL Keycloak: client, scopes, public key")
     p.add_argument("path", nargs="?", help="extension.toml or the project directory (default .)")
     p.add_argument("--out", help="write here instead of stdout")
-    p.add_argument("--realm", default="fmis", help="realm name (default fmis)")
+    p.add_argument("--realm", help="realm name (default: the last part of the issuer's path, else \"local\")")
     p.add_argument("--key", help="public JWK file (default .appext/client_key.jwk.json; created if missing)")
-    p.add_argument("--consent-audience", default="fmis-api", help="audience of the consent scopes (default fmis-api)")
+    p.add_argument("--consent-audience", help="audience of the consent scopes (default: platform.starter.audience of the platform file)")
     p.add_argument("--backchannel-host", default="host.docker.internal",
                    help="host under which Keycloak reaches the extension for the back-channel logout")
     p.add_argument("--backchannel-url", help="the whole back-channel logout URL (default http://<backchannel-host>:<dev_port>/auth/backchannel-logout)")
     p.add_argument("--dev-user", action="store_true", help="add a test user (dev@localhost.invalid) for a fresh local realm")
+    platform_option(p)
     p.set_defaults(handler="appext.cli.realm:export")
 
     _add_store(sub)

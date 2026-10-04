@@ -6,6 +6,6 @@ entry = "/"
 icon = "frontend/dist/icon.svg"
 
 [[services]]
-name = "fmis"
-audience = "fmis-api"
+name = "data"
+audience = "data-api"
 mode = "user"

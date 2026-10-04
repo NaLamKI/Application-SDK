@@ -6,7 +6,7 @@ entry = "/"
 icon = "frontend/dist/icon.svg"
 
 [[services]]
-name = "Fmis"
-audience = "fmis-api"
+name = "Data"
+audience = "data-api"
 scopes = ["ext-stock-read"]
 mode = "user"

@@ -3,17 +3,17 @@
 #
 #   appext keys generate && appext keys session          # secrets in .appext/ (never committed)
 #
-# A) Against the FMIS stack (store provisions the client; the realm lives there):
+# A) Against the platform's own stack (its store provisions the client; its OAuth service is the issuer):
 #      appext store bundle --env local --out auth-bundle
 #      docker compose --env-file auth-bundle/appext.env up --build
 #
-# B) Against a Keycloak of its own (no FMIS stack needed; port 58180, so it can run next to the FMIS stack):
-#      appext keycloak export --out .appext/realm-ext.json --dev-user \
+# B) Against a Keycloak of your own (no platform stack needed; port 58180, so it can run next to one):
+#      appext keycloak export --realm local --out .appext/realm-ext.json --dev-user \
 #          --backchannel-url http://extension:8000/auth/backchannel-logout
-#      docker compose --profile keycloak up --build
+#      APPEXT_ISSUER=http://keycloak.localhost:58180/realms/local docker compose --profile keycloak up --build
 #      open http://localhost:8100 and sign in with dev@localhost.invalid / dev
 #
-# The extension is reachable on http://localhost:8100 (8000 is the FMIS backend's port).
+# The extension is reachable on http://localhost:8100 (8000 is a common port of the platform's API).
 
 services:
   extension:
@@ -22,15 +22,19 @@ services:
     ports:
       - "8100:8000"
     environment:
-      # Values from the auth bundle (--env-file) win; the defaults fit profile B.
+      # Values from the auth bundle (--env-file) win. The issuer has no default: it is the platform's.
       APPEXT_ENV: ${APPEXT_ENV:-local}
-      APPEXT_ISSUER: ${APPEXT_ISSUER:-http://keycloak.localhost:58180/realms/fmis}
+      APPEXT_ISSUER: ${APPEXT_ISSUER:?set the issuer - profile A takes it from auth-bundle/appext.env, profile B is your Keycloak realm URL}
       APPEXT_CLIENT_ID: ${APPEXT_CLIENT_ID:-ext-{{id}}}
       APPEXT_CLIENT_AUTH: ${APPEXT_CLIENT_AUTH:-private_key_jwt}
       APPEXT_PUBLIC_URL: ${APPEXT_PUBLIC_URL:-http://localhost:8100}
-      APPEXT_APP_REDIRECT_URI: ${APPEXT_APP_REDIRECT_URI:-org.agrifooddata.apps.fmis.web:/callback}
-      APPEXT_SERVICE_FMIS_URL: ${APPEXT_SERVICE_FMIS_URL:-http://host.docker.internal:8000/api/v1}
+      # Optional: only where the platform's host app hands the sign-in over (its return address).
+      APPEXT_APP_REDIRECT_URI: ${APPEXT_APP_REDIRECT_URI:-}
       APPEXT_SESSION_STORE: redis://redis:6379/0
+      # The base URL of the starter service (add one line per further service extension.toml calls).
+      # Profile A takes it from auth-bundle/appext.env; a service on your own machine is reachable
+      # from the container as host.docker.internal.
+      APPEXT_SERVICE_{{service_env}}_URL: ${APPEXT_SERVICE_{{service_env}}_URL:-}
       APPEXT_CLIENT_KEY_FILE: /run/secrets/client_key
       APPEXT_SESSION_KEY_FILE: /run/secrets/session_key
     secrets:

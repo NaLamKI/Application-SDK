@@ -124,7 +124,7 @@ def device_login(ctx: Context, issuer: str, client_id: str, *, open_browser: boo
         if started.status_code != 200:
             error, description = _token_error(started)
             raise CliError(f"the sign-in refused to start: {error} {description}".strip(),
-                           hint=f"Is the public client {client_id!r} set up? See backend/keycloak/README.md.")
+                           hint=f"Is the public client {client_id!r} set up at the issuer? The platform's operator provides it (see docs/platform.md).")
         grant = started.json()
         address = grant.get("verification_uri_complete") or grant["verification_uri"]
         ctx.say(f"Open {address}")

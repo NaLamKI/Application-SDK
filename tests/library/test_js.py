@@ -271,7 +271,7 @@ console.log(JSON.stringify(out));
     assert result["seen"] == ["theme:dark", "language:de", "theme:light", "language:en"]
 
 
-# -- in the FMIS web app: an iframe that talks to its parent ------------------------------------------------
+# -- in the host's web app: an iframe that talks to its parent ------------------------------------------------
 
 FRAME_PRELUDE = """
 import { readFileSync } from "node:fs";
@@ -296,9 +296,10 @@ const document_ = (() => {
     addEventListener: (n, f) => { handlers[n] = f; },
   };
 })();
-function load({ appOrigins, framed, ua = "Mozilla/5.0", opener = null, extra = {} } = {}) {
+function load({ appOrigins, framed, ua = "Mozilla/5.0", opener = null, extra = {}, config = {}, lang = "en" } = {}) {
   globalThis.window = globalThis;
-  globalThis.__APPEXT_CONFIG__ = { appOrigins, name: "Reports", nameLocalized: { de: "Berichte" } };
+  document_.documentElement.lang = lang;
+  globalThis.__APPEXT_CONFIG__ = { appOrigins, name: "Reports", nameLocalized: { de: "Berichte" }, ...config };
   globalThis.parent = framed ? parent : globalThis;
   globalThis.document = document_;
   globalThis.opener = opener;
@@ -310,7 +311,7 @@ function load({ appOrigins, framed, ua = "Mozilla/5.0", opener = null, extra = {
   Object.assign(globalThis, extra);
   (0, eval)(code);
 }
-const WEB = "https://app.fmis.test";
+const WEB = "https://app.example.test";
 """
 
 
@@ -319,7 +320,7 @@ def test_the_frame_tells_its_parent_that_it_is_up_and_only_that_parent(tmp_path)
         tmp_path,
         FRAME_PRELUDE
         + """
-load({ appOrigins: [WEB, "https://staging.fmis.test"], framed: true });
+load({ appOrigins: [WEB, "https://staging.example.test"], framed: true });
 out.inApp = AppExt.inApp;
 out.posted = posted.slice();
 posted.length = 0;
@@ -331,10 +332,10 @@ console.log(JSON.stringify(out));
     assert result["inApp"] is True
     # `ready` goes to each configured origin – never to "*" – and the browser delivers it to the one that is the parent.
     assert [(p["message"], p["origin"]) for p in result["posted"]] == [
-        ({"command": "ready"}, "https://app.fmis.test"),
-        ({"command": "ready"}, "https://staging.fmis.test"),
+        ({"command": "ready"}, "https://app.example.test"),
+        ({"command": "ready"}, "https://staging.example.test"),
     ]
-    assert {p["origin"] for p in result["title"]} == {"https://app.fmis.test", "https://staging.fmis.test"}
+    assert {p["origin"] for p in result["title"]} == {"https://app.example.test", "https://staging.example.test"}
 
 
 def test_the_frame_takes_theme_and_language_only_from_its_parent(tmp_path):
@@ -388,19 +389,69 @@ def test_a_plain_tab_gets_a_bar_with_the_way_back_to_the_web_app(tmp_path):
 load({ appOrigins: [WEB], framed: false });
 const host = document_.body.children[0];
 const bar = host.shadow.children[0];
-const [button, title, fmis] = bar.children;
+const [button, title, badge] = bar.children;
 out.id = host.id;
 out.title = title.textContent;
 out.label = button.attrs["aria-label"];
+out.badge = badge ? badge.textContent : null;
 out.sticky = host.style.cssText.includes("position:sticky");
 button.listeners.click();
 out.assigned = out.assigned;
 console.log(JSON.stringify(out));
 """,
     )
-    assert result["id"] == "appext-shell" and result["title"] == "Reports" and result["label"] == "Back to FMIS"
+    # A platform that says nothing about its app gets a neutral bar: a label, no badge.
+    assert result["id"] == "appext-shell" and result["title"] == "Reports" and result["label"] == "Back to the app"
+    assert result["badge"] is None
     assert result["sticky"] is True
-    assert result["assigned"] == "https://app.fmis.test/"
+    assert result["assigned"] == "https://app.example.test/"
+
+
+def test_the_bar_carries_the_name_label_and_accent_the_platform_configured(tmp_path):
+    result = run_node(
+        tmp_path,
+        FRAME_PRELUDE
+        + """
+load({
+  appOrigins: [WEB], framed: false,
+  config: { appName: "Acme", appAccent: "#0b9f6a", backLabels: { en: "Return to {app}", xx: "[xx] Back to {app}" } },
+});
+const bar = document_.body.children[0].shadow.children[0];
+const [button, title, badge] = bar.children;
+out.english = button.attrs["aria-label"];
+out.badge = badge.textContent;
+out.accent = [button.style.cssText.includes("color:#0b9f6a"), badge.style.cssText.includes("color:#0b9f6a")];
+console.log(JSON.stringify(out));
+""",
+    )
+    assert result["english"] == "Return to Acme" and result["badge"] == "Acme" and result["accent"] == [True, True]
+
+
+@pytest.mark.parametrize("lang, expected", [("xx", "[xx] Back to Acme"), ("yy", "Back to Acme")], ids=["translated", "falls-back-to-english"])
+def test_the_label_follows_the_pages_language_and_falls_back_to_english(tmp_path, lang, expected):
+    result = run_node(
+        tmp_path,
+        FRAME_PRELUDE
+        + f"""
+const labels = {{ en: "Back to {{app}}", xx: "[xx] Back to {{app}}" }};
+load({{ appOrigins: [WEB], framed: false, lang: "{lang}", config: {{ appName: "Acme", backLabels: labels }} }});
+console.log(JSON.stringify({{ label: document_.body.children[0].shadow.children[0].children[0].attrs["aria-label"] }}));
+""",
+    )
+    assert result == {"label": expected}
+
+
+def test_a_bad_accent_colour_is_ignored(tmp_path):
+    result = run_node(
+        tmp_path,
+        FRAME_PRELUDE
+        + """
+load({ appOrigins: [WEB], framed: false, config: { appName: "Acme", appAccent: "red; background:url(x)" } });
+const [button] = document_.body.children[0].shadow.children[0].children;
+console.log(JSON.stringify({ style: button.style.cssText }));
+""",
+    )
+    assert "url(" not in result["style"] and "color:#2563eb" in result["style"]
 
 
 def test_the_bar_closes_a_tab_the_web_app_opened_instead_of_loading_the_app_again(tmp_path):
@@ -421,12 +472,13 @@ console.log(JSON.stringify({ closed, assigned: out.assigned ?? null }));
     "setup",
     [
         'globalThis.AppExtBridge = { postMessage() {} }; load({ appOrigins: [WEB], framed: false });',  # the phone app's WebView (the channel)
-        'load({ appOrigins: [WEB], framed: false, ua: "Mozilla/5.0 FMIS-App-WebView/1" });',            # the marker alone: the channel is not there yet
+        'load({ appOrigins: [WEB], framed: false, ua: "Mozilla/5.0 Acme-App-WebView/1" });',            # the marker alone: the channel is not there yet
+        'load({ appOrigins: [WEB], framed: false, ua: "Mozilla/5.0 AcmeShell/9", config: { appMarker: "AcmeShell/" } });',  # a platform with its own marker
         'load({ appOrigins: [], framed: false });',                                                     # no web app: nothing to lead back to
         'document_.querySelector = () => ({ getAttribute: () => "off" }); load({ appOrigins: [WEB], framed: false });',  # <meta name="appext-shell" content="off">
         'load({ appOrigins: [WEB], framed: true });',                                                   # inside the web app's frame: the app has its own bar
     ],
-    ids=["phone-app", "phone-app-marker", "no-web-app", "page-opts-out", "framed"],
+    ids=["phone-app", "phone-app-marker", "custom-marker", "no-web-app", "page-opts-out", "framed"],
 )
 def test_there_is_no_bar_where_the_app_or_the_page_brings_its_own_navigation(tmp_path, setup):
     result = run_node(

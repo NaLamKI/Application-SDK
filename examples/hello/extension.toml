@@ -3,9 +3,9 @@
 # docs/manifest.md of the SDK; `appext manifest check` tells you what is wrong.
 
 [extension]
-id = "{{id}}"
-name = "{{name}}"
-description = "An extension for {{platform_name}}"
+id = "hello"
+name = "Hello"
+description = "An extension for the platform"
 version = "0.1.0"
 entry = "/"
 icon = "icon.svg"
@@ -28,11 +28,11 @@ dev_port = 8100
 scopes = []
 
 [[services]]
-# The name in code: ext.service("{{service}}").
-name = "{{service}}"
+# The name in code: ext.service("data").
+name = "data"
 # The OAuth client of the target service.
-audience = "{{audience}}"
+audience = "data-api"
 # What the extension may do there; ask for no more than it needs.
-scopes = ["{{scope}}"]
+scopes = ["data-read"]
 # On behalf of the signed-in person.
 mode = "user"

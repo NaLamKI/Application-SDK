@@ -1,4 +1,4 @@
-"""appext: the SDK for FMIS extensions.
+"""appext: the SDK for extensions of platforms that follow the reference architecture.
 
 An extension is a web frontend plus a Python backend under one origin. This
 package gives the backend the sign-in (OIDC, server-side session), calls to other

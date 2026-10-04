@@ -6,14 +6,14 @@ service. The service has to check what the concept lists: signature (JWKS),
 exchanged token the calling extension is the authorized party (`azp`), so a
 service can decide per extension what it may do on a person's behalf.
 
-    verifier = TokenVerifier(issuer="https://sso.example.com/realms/fmis",
-                             audience="projekt-api",
-                             jwks_url="https://sso.example.com/realms/fmis/protocol/openid-connect/certs")
+    verifier = TokenVerifier(issuer="https://sso.example.com/realms/example",
+                             audience="projects-api",
+                             jwks_url="https://sso.example.com/realms/example/protocol/openid-connect/certs")
     app = FastAPI()
     verifier.install(app)
 
-    @app.get("/v1/projekte", dependencies=[Depends(require_scope("svc-projekte-lesen"))])
-    async def projekte(principal: Principal = Depends(current_principal)): ...
+    @app.get("/v1/projects", dependencies=[Depends(require_scope("svc-projects-read"))])
+    async def projects(principal: Principal = Depends(current_principal)): ...
 
 The same library on both sides means the rules cannot drift apart.
 

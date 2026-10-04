@@ -9,8 +9,8 @@ icon = "frontend/dist/icon.svg"
 scopes = ["ext-data-read"]
 
 [[services]]
-name = "fmis"
-audience = "fmis-api"
+name = "data"
+audience = "data-api"
 scopes = ["ext-stock-read"]
 mode = "user"
 

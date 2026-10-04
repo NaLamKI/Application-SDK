@@ -635,6 +635,10 @@ class Extension:
         manifest = self.manifest
         config = {
             "appOrigins": list(self.settings.app_origins),
+            "appName": self.settings.app_name,
+            "appMarker": self.settings.app_marker,
+            "backLabels": dict(self.settings.app_back_labels),
+            "appAccent": self.settings.app_accent,
             "name": manifest.name,
             "nameLocalized": dict(manifest.name_localized),
         }
@@ -713,7 +717,7 @@ def message_page(title: str, text: str, status: int, *, retry: bool = False, fra
 def default_csp(manifest: Manifest, frame_ancestors: str = "'none'") -> str:
     """`default-src 'self'` and no inline scripts; images may also be `data:` URIs (bundlers inline small ones).
 
-    Only the FMIS web app may embed the extension (`frame_ancestors`, from `APPEXT_APP_ORIGINS`);
+    Only the host app's web app may embed the extension (`frame_ancestors`, from `APPEXT_APP_ORIGINS`);
     without one, nothing may.
     """
     hosts = "".join(f" https://{h}" for h in manifest.hosts)

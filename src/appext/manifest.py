@@ -38,7 +38,7 @@ HOST_PATTERN = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-
 
 CLIENT_AUTH_METHODS = ("private_key_jwt", "client_secret")
 SERVICE_MODES = ("user", "service")
-#: Where the FMIS app shows the extension: in its own frame (the phone app's WebView, a frame under
+#: Where the host app shows the extension: in its own frame (the phone app's WebView, a frame under
 #: the web app's header) or in the system browser.
 DISPLAY_MODES = ("in_app", "external")
 #: What the extension is: a web page with a server of its own that signs people in (`extension`), or

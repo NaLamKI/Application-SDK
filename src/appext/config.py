@@ -6,9 +6,11 @@ secrets as files (`APPEXT_CLIENT_KEY_FILE`, `APPEXT_SESSION_KEY_FILE`).
 
 Two environments, two attitudes:
 
-* `APPEXT_ENV=local` (the default) is for development at the desk: everything
-  has a default that works against the local stack, a missing session key is
-  generated per process (with a warning), and a missing lock file is fine.
+* `APPEXT_ENV=local` (the default) is for development at the desk: what the
+  platform file of the project (`appext.toml`, see `appext.platform`) knows is
+  the default (issuer, service URLs, the host app's return address), a missing
+  session key is generated per process (with a warning), and a missing lock
+  file is fine.
 * Any other value is a deployment: nothing is guessed. A missing value is an
   error that names the variable, and **all** problems are reported at once.
 
@@ -20,8 +22,10 @@ from __future__ import annotations
 import base64
 import binascii
 import ipaddress
+import json
 import logging
 import os
+import re
 import secrets as _secrets
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -29,15 +33,17 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .manifest import CLIENT_AUTH_METHODS, Manifest
+from .platform import Platform, PlatformError, discover
 
 log = logging.getLogger("appext")
 
 LOCAL_ENV = "local"
-DEFAULT_ISSUER = "http://127.0.0.1:58080/realms/fmis"
-DEFAULT_APP_REDIRECT_URI = "org.agrifooddata.apps.fmis.web:/callback"
-#: What the local stack of this repository serves; only used in `local`.
-LOCAL_SERVICE_URLS = {"fmis-api": "http://127.0.0.1:8000/api/v1"}
+#: A host app that shows extensions in a WebView adds a token to the WebView's user agent:
+#: `<Name>-App-WebView/<version>`. The SDK only looks for this part (`APPEXT_APP_MARKER` replaces it).
+DEFAULT_APP_MARKER = "-App-WebView/"
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
+LANGUAGE_CODE = re.compile(r"^[a-z]{2}(-[A-Z]{2})?$")
+ACCENT_COLOUR = re.compile(r"^#[0-9a-fA-F]{3,8}$")
 
 
 class ConfigError(ValueError):
@@ -133,7 +139,9 @@ class ExtensionSettings:
     client_id: str
     client_auth: str
     public_url: str
-    app_redirect_uri: str
+    #: Where the host app takes the sign-in back (`APPEXT_APP_REDIRECT_URI`). `None` = there is no host
+    #: app that hands the sign-in over: the extension is a website like any other.
+    app_redirect_uri: str | None
     #: PEM or JWK (JSON) text of the private key for `private_key_jwt`.
     client_key: Secret | None = field(default=None, repr=True)
     client_key_id: str | None = None
@@ -149,9 +157,18 @@ class ExtensionSettings:
     session_max_age: int = 30 * 24 * 3600
     http_timeout: float = 10.0
     lock_file: Path | None = None
-    #: Where the FMIS **web** app lives (origins, `APPEXT_APP_ORIGINS`). Empty = no web
-    #: app: nothing may embed the extension, and it shows no "back to FMIS" bar.
+    #: Where the host's **web** app lives (origins, `APPEXT_APP_ORIGINS`). Empty = no web
+    #: app: nothing may embed the extension, and it shows no "back to the app" bar.
     app_origins: tuple[str, ...] = ()
+    #: What the extension calls the host app in the page it draws ("Back to <name>"), `APPEXT_APP_NAME`.
+    app_name: str = ""
+    #: The part of the WebView's user agent that says "the host app is showing me" (`APPEXT_APP_MARKER`).
+    app_marker: str = DEFAULT_APP_MARKER
+    #: The label of the way back in a browser tab, by language; `{app}` stands for `app_name`
+    #: (`APPEXT_APP_BACK_LABELS`, a JSON object). Empty: the bridge's English default.
+    app_back_labels: Mapping[str, str] = field(default_factory=dict)
+    #: The colour of that bar's accents, `#rgb`/`#rrggbb` (`APPEXT_APP_ACCENT`). Empty: the bridge's default.
+    app_accent: str = ""
 
     @property
     def frame_ancestors(self) -> str:
@@ -167,7 +184,8 @@ class ExtensionSettings:
         return f"{self.public_url}/auth/callback"
 
     def redirect_uri(self, app_mode: bool) -> str:
-        return self.app_redirect_uri if app_mode else self.web_redirect_uri
+        """The return address for a sign-in; the app's only if the host app has one."""
+        return self.app_redirect_uri if app_mode and self.app_redirect_uri else self.web_redirect_uri
 
     @property
     def origin(self) -> str:
@@ -223,6 +241,18 @@ class _Reader:
         self.environ = environ
         self.problems: list[str] = []
         self.env = (environ.get("APPEXT_ENV") or LOCAL_ENV).strip()
+        self.platform = self._platform()
+
+    def _platform(self) -> Platform:
+        """What the project's platform file knows – used only for development at the desk."""
+        if self.env != LOCAL_ENV:
+            return Platform()
+        base = self.manifest.base_dir if self.manifest else None
+        try:
+            return discover(self.environ, project_dir=base, user_default=False)
+        except PlatformError as error:
+            self.problems.append(f"platform file: {error}")
+            return Platform()
 
     # -- helpers -----------------------------------------------------------------------------
 
@@ -284,7 +314,7 @@ class _Reader:
         client_id = self.require("APPEXT_CLIENT_ID", m.client_id if m else None)
         client_auth = self.read_client_auth()
         public_url = self.read_public_url()
-        app_redirect = self.get("APPEXT_APP_REDIRECT_URI", DEFAULT_APP_REDIRECT_URI)
+        app_redirect = self.get("APPEXT_APP_REDIRECT_URI", self.platform.app_redirect_uri)
         if app_redirect and (not urlsplit(app_redirect).scheme or "#" in app_redirect):
             self.problems.append("APPEXT_APP_REDIRECT_URI must be a URI with a scheme and no fragment")
 
@@ -298,10 +328,12 @@ class _Reader:
         max_age = int(self.number("APPEXT_SESSION_MAX_AGE", 30 * 24 * 3600, minimum=60))
         timeout = self.number("APPEXT_HTTP_TIMEOUT", 10.0, minimum=0.1)
         app_origins = self.read_app_origins()
+        back_labels = self.read_back_labels()
+        accent = self.read_accent()
 
         if self.problems:
             raise ConfigError(self.problems)
-        assert issuer and client_id and client_auth and public_url and app_redirect
+        assert issuer and client_id and client_auth and public_url
         return ExtensionSettings(
             env=self.env,
             issuer=issuer,
@@ -322,10 +354,14 @@ class _Reader:
             http_timeout=timeout,
             lock_file=Path(lock_file) if lock_file else None,
             app_origins=app_origins,
+            app_name=(self.get("APPEXT_APP_NAME", "") or "").strip(),
+            app_marker=self.get("APPEXT_APP_MARKER", DEFAULT_APP_MARKER) or DEFAULT_APP_MARKER,
+            app_back_labels=back_labels,
+            app_accent=accent,
         )
 
     def read_app_origins(self) -> tuple[str, ...]:
-        """`APPEXT_APP_ORIGINS`: comma-separated origins of the FMIS web app.
+        """`APPEXT_APP_ORIGINS`: comma-separated origins of the host's web app.
 
         Each entry is an origin and nothing more – it ends up in a `Content-Security-Policy`,
         where a path, a wildcard or a stray `;` would change what the policy says.
@@ -354,9 +390,37 @@ class _Reader:
                 origins.append(origin)
         return tuple(origins)
 
+    def read_back_labels(self) -> dict[str, str]:
+        """`APPEXT_APP_BACK_LABELS`: `{"en": "Back to {app}", "de": "..."}` – language code -> label."""
+        raw = self.get("APPEXT_APP_BACK_LABELS")
+        if raw is None:
+            return {}
+        try:
+            data = json.loads(raw)
+        except ValueError:
+            self.problems.append("APPEXT_APP_BACK_LABELS must be a JSON object, e.g. {\"en\": \"Back to {app}\"}")
+            return {}
+        if not isinstance(data, dict) or not all(
+            isinstance(k, str) and LANGUAGE_CODE.fullmatch(k) and isinstance(v, str) and v.strip() for k, v in data.items()
+        ):
+            self.problems.append("APPEXT_APP_BACK_LABELS must map language codes (de, en, pt-BR) to non-empty labels")
+            return {}
+        return dict(data)
+
+    def read_accent(self) -> str:
+        value = (self.get("APPEXT_APP_ACCENT", "") or "").strip()
+        if value and not ACCENT_COLOUR.fullmatch(value):
+            self.problems.append("APPEXT_APP_ACCENT must be a colour like #0b9f6a")
+            return ""
+        return value
+
     def read_issuer(self) -> str | None:
-        issuer = self.require("APPEXT_ISSUER", DEFAULT_ISSUER if self.local else None)
+        issuer = self.get("APPEXT_ISSUER", self.platform.issuer if self.local else None)
         if issuer is None:
+            self.problems.append(
+                f"APPEXT_ISSUER is required (APPEXT_ENV={self.env})"
+                + (": set it, or name the platform in appext.toml next to extension.toml (docs/platform.md)" if self.local else "")
+            )
             return None
         issuer = issuer.rstrip("/")
         parts = urlsplit(issuer)
@@ -461,7 +525,7 @@ class _Reader:
             variable = f"APPEXT_SERVICE_{svc.env_name}_URL"
             url = self.get(variable)
             if url is None and self.local:
-                url = LOCAL_SERVICE_URLS.get(svc.audience)
+                url = self.platform.services.get(svc.audience)
             if url is None:
                 if self.local:
                     log.warning("%s is not set: calls to service %r will fail", variable, svc.name)

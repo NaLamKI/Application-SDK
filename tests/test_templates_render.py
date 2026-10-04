@@ -1,7 +1,11 @@
 """`appext new` renders the templates into a project that is complete and healthy:
 the manifest passes the check, the secret scan is clean, the project's own tests pass,
 and the Dockerfile only copies what the .dockerignore lets through. The `link` template is
-only a manifest and a README – it has no server, hence none of the rest."""
+only a manifest and a README – it has no server, hence none of the rest.
+
+Every project is written for a platform: `appext.toml` says which, and its `[platform.starter]`
+(service, audience, scope) fills the manifest and the example code. Without a platform the
+placeholders read `the platform`, `data`, `data-api` and `data-read`."""
 
 from __future__ import annotations
 
@@ -21,29 +25,54 @@ from appext.cli.parser import TEMPLATES as OFFERED
 from appext.cli.scaffold import templates_dir
 from appext.cli.scan import IgnoreRules
 from appext.manifest import loads_manifest
+from appext.platform import load_platform_file
 
 TEMPLATES = ("spa", "htmx")  # the ones that are a project with a server
 ANY_TEMPLATE = (*TEMPLATES, "link")
 FILES = {
-    "spa": ["extension.toml", "pyproject.toml", "app/main.py", "Dockerfile", "compose.yaml", ".gitignore", ".dockerignore", "README.md",
+    "spa": ["extension.toml", "appext.toml", "pyproject.toml", "app/main.py", "Dockerfile", "compose.yaml", ".gitignore", ".dockerignore", "README.md",
             "icon.svg", "tests/test_api.py", "tests/conftest.py", "frontend/package.json", "frontend/package-lock.json",
             "frontend/index.html", "frontend/vite.config.js", "frontend/src/main.js", "frontend/src/style.css"],
-    "htmx": ["extension.toml", "pyproject.toml", "app/main.py", "app/templates/base.html", "app/templates/index.html",
+    "htmx": ["extension.toml", "appext.toml", "pyproject.toml", "app/main.py", "app/templates/base.html", "app/templates/index.html",
              "Dockerfile", "compose.yaml", ".gitignore", ".dockerignore", "README.md", "icon.svg", "tests/test_pages.py",
              "tests/conftest.py", "static/htmx.min.js", "static/htmx.LICENSE.txt", "static/app.js", "static/style.css"],
-    "link": ["extension.toml", "README.md"],
+    "link": ["extension.toml", "appext.toml", "README.md"],
 }
-PLACEHOLDER = re.compile(r"\{\{(?:id|name|package)\}\}")
+PLACEHOLDER = re.compile(r"\{\{(?:id|name|package|platform_name|service|audience|scope)\}\}")
 SDK = Path(__file__).resolve().parent.parent
+BUILD_OUTPUT = {"node_modules", "__pycache__", "dist", ".appext", ".venv", ".pytest_cache"}
+PRODUCT = "FM" "IS"  # the product the SDK came from; written in two parts so that this guard is no hit itself
+NOT_ENGLISH = re.compile(r"[\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df]|^de = ", re.M)  # umlauts, sharp s, a "de" translation: English only
+
+#: A platform with a starter of its own: what a project written for it must use instead of the defaults.
+ACME = """\
+[platform]
+name = "Acme Platform"
+issuer = "https://auth.acme.test/realms/acme"
+store_url = "https://api.acme.test/api/v1"
+app_redirect_uri = "com.acme.app:/callback"
+
+[platform.services]
+orders-api = "http://127.0.0.1:9000/api/v1"
+
+[platform.starter]
+service = "orders"
+audience = "orders-api"
+scope = "orders-read"
+"""
 
 
 class Cli:
-    def __init__(self, cwd: Path) -> None:
+    """The command line in a directory, with an environment that finds no platform unless the test gives one:
+    `XDG_CONFIG_HOME` points at an empty directory, so the user's own `~/.config/appext` is never read."""
+
+    def __init__(self, cwd: Path, config_home: Path | None = None) -> None:
         self.cwd = cwd
+        self.env: dict[str, str] = {"XDG_CONFIG_HOME": str(config_home or cwd.parent / f"{cwd.name}-no-config")}
 
     def __call__(self, *argv: str) -> int:
         self.stdout, self.stderr = io.StringIO(), io.StringIO()
-        return main(list(argv), Context(env={}, cwd=self.cwd, out=self.stdout, err=self.stderr))
+        return main(list(argv), Context(env=self.env, cwd=self.cwd, out=self.stdout, err=self.stderr))
 
     @property
     def out(self) -> str:
@@ -62,6 +91,14 @@ def small_keys(monkeypatch):
 @pytest.fixture
 def cli(tmp_path) -> Cli:
     return Cli(tmp_path)
+
+
+@pytest.fixture
+def acme(tmp_path_factory) -> Path:
+    """A platform file outside the project directory, for `--platform` and `APPEXT_PLATFORM`."""
+    file = tmp_path_factory.mktemp("platform") / "acme.toml"
+    file.write_text(ACME, encoding="utf-8")
+    return file
 
 
 @pytest.fixture(params=TEMPLATES)
@@ -93,7 +130,16 @@ def link(cli, tmp_path) -> Path:
 
 
 def project_tree(root: Path) -> list[Path]:
-    return [p for p in sorted(root.rglob("*")) if p.is_file() and "node_modules" not in p.parts and "__pycache__" not in p.parts]
+    return [p for p in sorted(root.rglob("*")) if p.is_file() and not BUILD_OUTPUT & set(p.relative_to(root).parts)]
+
+
+def run_project_tests(project: Path, **environment: str) -> subprocess.CompletedProcess:
+    """The project's own pytest run, as its author would start it – minus whatever APPEXT_* the shell exports."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("APPEXT_")}
+    return subprocess.run(
+        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q"],
+        cwd=project, env={**env, "PYTHONDONTWRITEBYTECODE": "1", **environment}, capture_output=True, text=True, timeout=180,
+    )
 
 
 # --- rendering --------------------------------------------------------------------------------
@@ -146,6 +192,119 @@ def test_a_display_name_that_would_break_the_files_is_refused(any_template, cli,
 def test_dir_is_the_parent_of_the_project(any_template, cli, tmp_path):
     assert cli("new", "inside", "--template", any_template, "--dir", "nested/here") == 0
     assert (tmp_path / "nested" / "here" / "inside" / "extension.toml").is_file()
+
+
+# --- the platform: appext.toml, and what the starter of the platform fills in ----------------------------------------
+
+
+def test_a_new_project_gets_a_platform_file(any_project):
+    platform = load_platform_file(any_project / "appext.toml")
+    assert platform.name == "" and platform.issuer is None and platform.store_url is None  # nothing is guessed
+    assert (platform.starter.service, platform.starter.audience, platform.starter.scope) == ("data", "data-api", "data-read")
+    text = (any_project / "appext.toml").read_text(encoding="utf-8")
+    assert "# issuer = " in text and "# store_url = " in text and "no secret ever belongs here" in text  # hints for what is missing
+
+
+def test_the_platform_file_carries_the_configured_platform(any_template, cli, tmp_path, acme):
+    assert cli("new", "demo-app", "--template", any_template, "--platform", str(acme)) == 0, cli.err
+    platform = load_platform_file(tmp_path / "demo-app" / "appext.toml")
+    assert (platform.name, platform.issuer, platform.store_url) == ("Acme Platform", "https://auth.acme.test/realms/acme", "https://api.acme.test/api/v1")
+    assert platform.app_redirect_uri == "com.acme.app:/callback" and dict(platform.services) == {"orders-api": "http://127.0.0.1:9000/api/v1"}
+    assert (platform.starter.service, platform.starter.audience, platform.starter.scope) == ("orders", "orders-api", "orders-read")
+    assert "# issuer" not in (tmp_path / "demo-app" / "appext.toml").read_text(encoding="utf-8")  # nothing is missing: no hint
+    assert "edit appext.toml" not in cli.out
+
+
+def test_without_a_platform_the_defaults_fill_the_placeholders(template, project, cli):
+    manifest = loads_manifest((project / "extension.toml").read_text(encoding="utf-8"))
+    assert manifest.description == "An extension for the platform"
+    (service,) = manifest.services
+    assert (service.name, service.audience, service.scopes, service.mode) == ("data", "data-api", ("data-read",), "user")
+    assert 'ext.service("data")' in (project / "app" / "main.py").read_text(encoding="utf-8")
+    assert "An extension for the platform, created with" in (project / "README.md").read_text(encoding="utf-8")
+    assert "an extension for the platform" in (project / "pyproject.toml").read_text(encoding="utf-8")
+    assert "edit appext.toml" in cli.out  # the platform's OAuth service and App Store are still to name
+
+
+def assert_written_for_acme(project: Path, template: str) -> None:
+    manifest = loads_manifest((project / "extension.toml").read_text(encoding="utf-8"))
+    assert manifest.description == "An extension for Acme Platform"
+    (service,) = manifest.services
+    assert (service.name, service.audience, service.scopes, service.mode) == ("orders", "orders-api", ("orders-read",), "user")
+    assert 'ext.service("orders")' in (project / "app" / "main.py").read_text(encoding="utf-8")
+    tests = "".join(p.read_text(encoding="utf-8") for p in (project / "tests").glob("test_*.py"))
+    assert 'mocks.get("orders", "/items")' in tests
+    assert '("orders", "orders-api", ("orders-read",), "user")' in tests
+    assert "An extension for Acme Platform, created with" in (project / "README.md").read_text(encoding="utf-8")
+    assert "an extension for Acme Platform" in (project / "pyproject.toml").read_text(encoding="utf-8")
+    for path in project_tree(project):
+        if path.name in ("package-lock.json", "htmx.min.js", "appext.toml") or path.suffix == ".svg":
+            continue
+        text = path.read_text(encoding="utf-8")
+        assert "data-api" not in text and "data-read" not in text, f"{path.relative_to(project)} still has the defaults"
+        assert 'service("data")' not in text, path
+
+
+def test_the_starter_of_a_platform_file_fills_manifest_code_and_tests(template, cli, tmp_path, acme):
+    assert cli("new", "demo-app", "--template", template, "--platform", str(acme)) == 0, cli.err
+    assert_written_for_acme(tmp_path / "demo-app", template)
+    # The URL variable of the starter service is named after it, in the compose file too.
+    compose = (tmp_path / "demo-app" / "compose.yaml").read_text()
+    assert "APPEXT_SERVICE_ORDERS_URL: ${APPEXT_SERVICE_ORDERS_URL:-}" in compose and "APPEXT_SERVICE_DATA_URL" not in compose
+
+
+def test_the_starter_of_APPEXT_PLATFORM_is_used_too(template, cli, tmp_path, acme):
+    cli.env["APPEXT_PLATFORM"] = str(acme)
+    assert cli("new", "demo-app", "--template", template) == 0, cli.err
+    assert_written_for_acme(tmp_path / "demo-app", template)
+
+
+def test_the_option_beats_the_environment(cli, tmp_path, acme):
+    other = tmp_path.parent / f"{tmp_path.name}-other.toml"
+    other.write_text('[platform]\nname = "Other"\n[platform.starter]\nservice = "things"\naudience = "things-api"\nscope = "things-read"\n')
+    cli.env["APPEXT_PLATFORM"] = str(acme)
+    assert cli("new", "demo-app", "--template", "spa", "--platform", str(other)) == 0, cli.err
+    manifest = loads_manifest((tmp_path / "demo-app" / "extension.toml").read_text(encoding="utf-8"))
+    assert manifest.description == "An extension for Other" and manifest.services[0].name == "things"
+
+
+def test_the_projects_own_tests_pass_with_the_starter_of_a_platform(template, cli, tmp_path, acme):
+    """The generated tests name the starter service, whatever it is: they have to follow the platform."""
+    assert cli("new", "demo-app", "--template", template, "--platform", str(acme)) == 0, cli.err
+    result = run_project_tests(tmp_path / "demo-app")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "passed" in result.stdout
+
+
+def test_the_platform_name_comes_from_the_platform_table(cli, tmp_path, acme):
+    assert cli("new", "demo-link", "--template", "link", "--platform", str(acme)) == 0, cli.err
+    link = tmp_path / "demo-link"
+    manifest = loads_manifest((link / "extension.toml").read_text(encoding="utf-8"))
+    assert manifest.description == "A link for Acme Platform"
+    assert "A **link** for Acme Platform" in (link / "README.md").read_text(encoding="utf-8")
+    assert "Acme Platform" in (link / "extension.toml").read_text(encoding="utf-8").splitlines()[1]  # the header comment names it too
+    assert load_platform_file(link / "appext.toml").name == "Acme Platform"
+
+
+def test_a_platform_with_only_a_name_still_uses_the_default_starter(cli, tmp_path):
+    named = tmp_path.parent / f"{tmp_path.name}-named.toml"
+    named.write_text('[platform]\nname = "Acme Platform"\n')
+    assert cli("new", "demo-app", "--template", "spa", "--platform", str(named)) == 0, cli.err
+    manifest = loads_manifest((tmp_path / "demo-app" / "extension.toml").read_text(encoding="utf-8"))
+    assert manifest.description == "An extension for Acme Platform"
+    assert (manifest.services[0].name, manifest.services[0].audience, manifest.services[0].scopes) == ("data", "data-api", ("data-read",))
+
+
+def test_templates_and_example_are_english_and_name_no_product(template):
+    roots = [templates_dir() / template, SDK / "examples" / "hello"] if template == "spa" else [templates_dir() / template]
+    roots.append(templates_dir() / "link")
+    for root in roots:
+        for path in project_tree(root):
+            if path.name in ("package-lock.json", "htmx.min.js"):
+                continue
+            text = path.read_text(encoding="utf-8") if path.suffix != ".svg" else ""
+            assert PRODUCT.lower() not in text.lower(), f"{path} names the product"
+            assert not NOT_ENGLISH.search(text), f"{path} is not English"
 
 
 # --- refusals -----------------------------------------------------------------------------------
@@ -205,10 +364,17 @@ def test_the_scan_catches_a_key_that_ends_up_in_the_source_tree(project, cli):
 
 
 def test_the_projects_own_tests_pass(project):
-    env = {k: v for k, v in os.environ.items() if not k.startswith("APPEXT_")}
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "-q"],
-        cwd=project, env={**env, "PYTHONDONTWRITEBYTECODE": "1"}, capture_output=True, text=True, timeout=180,
+    result = run_project_tests(project)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "passed" in result.stdout
+
+
+def test_the_projects_own_tests_do_not_depend_on_the_machine(project, tmp_path):
+    """The shell of a developer or of CI may export a deployment's settings or name a platform file: the tests ignore it."""
+    result = run_project_tests(
+        project, APPEXT_ENV="production", APPEXT_ISSUER="https://elsewhere.example/realms/x", APPEXT_CLIENT_ID="someone-else",
+        APPEXT_PLATFORM=str(tmp_path / "does-not-exist.toml"), APPEXT_APP_REDIRECT_URI="not a uri", APPEXT_SESSION_STORE="redis://nowhere",
+        XDG_CONFIG_HOME=str(tmp_path / "no-config"),
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "passed" in result.stdout
@@ -247,40 +413,68 @@ def test_the_image_never_receives_keys(project):
     ignored = (project / ".dockerignore").read_text()
     for needle in (".appext", "**/*.pem", "auth-bundle", "keys"):
         assert needle in ignored
+    assert "\nappext.toml\n" in ignored  # the platform file is for the desk; a deployment gets an auth bundle
     gitignored = (project / ".gitignore").read_text()
     for needle in (".appext/", "*.pem", "auth-bundle/"):
         assert needle in gitignored
 
 
+def test_compose_has_no_built_in_platform(project):
+    """The issuer is the platform's: there is no default for it. The host app's return address is optional."""
+    text = (project / "compose.yaml").read_text()
+    assert "APPEXT_ISSUER: ${APPEXT_ISSUER:?" in text
+    assert "APPEXT_APP_REDIRECT_URI: ${APPEXT_APP_REDIRECT_URI:-}" in text
+    entries = [line.strip() for line in text.splitlines() if line.strip().startswith("APPEXT_")]
+    assert not any(line.startswith("APPEXT_ISSUER: ${APPEXT_ISSUER:-") for line in entries)
+    # The starter service's URL has a variable named after the service, and no default URL.
+    service = [line for line in entries if line.startswith("APPEXT_SERVICE_")]
+    assert service == ["APPEXT_SERVICE_DATA_URL: ${APPEXT_SERVICE_DATA_URL:-}"]
+    assert "A) Against the platform's own stack" in text and "B) Against a Keycloak of your own" in text
+    assert ".appext/services.env" not in text and "env_file" not in text
+
+
+def compose_config(project: Path, **environment: str) -> subprocess.CompletedProcess:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("APPEXT_")}
+    return subprocess.run(
+        ["docker", "compose", "-f", str(project / "compose.yaml"), "--profile", "keycloak", "config", "--quiet"],
+        capture_output=True, text=True, timeout=60, env={**env, **environment},
+    )
+
+
 @pytest.mark.skipif(shutil.which("docker") is None, reason="needs docker")
-def test_compose_file_is_valid(project):
-    result = subprocess.run(["docker", "compose", "-f", str(project / "compose.yaml"), "--profile", "keycloak", "config", "--quiet"],
-                            capture_output=True, text=True, timeout=60)
+def test_compose_file_is_valid_once_the_issuer_is_given(project):
+    result = compose_config(project, APPEXT_ISSUER="https://auth.example.test/realms/test")
     if "unknown shorthand flag" in result.stderr or "is not a docker command" in result.stderr:
         pytest.skip("docker compose plugin missing")
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.skipif(shutil.which("docker") is None, reason="needs docker")
+def test_compose_refuses_to_start_without_an_issuer(project):
+    result = compose_config(project)
+    if "unknown shorthand flag" in result.stderr or "is not a docker command" in result.stderr:
+        pytest.skip("docker compose plugin missing")
+    assert result.returncode != 0 and "APPEXT_ISSUER" in result.stderr
+
+
 def test_the_example_is_the_spa_template_and_nothing_else(cli, tmp_path):
-    """sdk/examples/hello-fmis is generated from the SPA template; it must not drift away from it."""
-    example = SDK / "examples" / "hello-fmis"
-    assert cli("new", "hello-fmis", "--template", "spa", "--name", "Hello FMIS") == 0
-    fresh = tmp_path / "hello-fmis"
-    different = {"extension.toml"}  # description of the example
+    """examples/hello is what `appext new hello --template spa --name Hello` generates when no platform is
+    configured (the CLI of this test finds none); it must not drift away from the template."""
+    example = SDK / "examples" / "hello"
+    assert cli("new", "hello", "--template", "spa", "--name", "Hello") == 0
+    fresh = tmp_path / "hello"
     for path in project_tree(fresh):
         relative = path.relative_to(fresh)
-        if relative.parts[0] == "tests" or str(relative) in different:
-            continue
         assert (example / relative).read_bytes() == path.read_bytes(), f"{relative} drifted from the template"
-    present = {p.relative_to(example) for p in project_tree(example) if "dist" not in p.parts and ".appext" not in p.parts}
-    assert {str(p) for p in present} - {str(p.relative_to(fresh)) for p in project_tree(fresh)} <= {
-        "tests/conftest.py", "tests/test_api.py"}
+    assert {p.relative_to(example) for p in project_tree(example)} == {p.relative_to(fresh) for p in project_tree(fresh)}
+    assert (example / "appext.toml").is_file()
 
 
-def test_the_example_manifest_is_valid_and_reads_fields_with_ext_data_read(cli):
-    example = SDK / "examples" / "hello-fmis"
+def test_the_example_manifest_is_valid_and_calls_the_starter_service(cli):
+    example = SDK / "examples" / "hello"
     assert cli("manifest", "check", str(example)) == 0, cli.out
-    assert "fmis (user) -> fmis-api [ext-data-read]" in cli.out
+    assert "data (user) -> data-api [data-read]" in cli.out
+    assert "An extension for the platform" in (example / "extension.toml").read_text(encoding="utf-8")
 
 
 def test_templates_hold_no_build_leftovers():
@@ -296,8 +490,8 @@ def test_every_template_the_command_offers_is_a_directory_and_the_other_way_roun
     assert {p.name for p in templates_dir().iterdir() if p.is_dir()} == set(OFFERED) == set(ANY_TEMPLATE)
 
 
-def test_a_link_project_is_a_manifest_and_a_readme_and_nothing_else(link):
-    assert sorted(str(p.relative_to(link)) for p in project_tree(link)) == ["README.md", "extension.toml"]
+def test_a_link_project_is_a_manifest_a_readme_and_the_platform_file_and_nothing_else(link):
+    assert sorted(str(p.relative_to(link)) for p in project_tree(link)) == ["README.md", "appext.toml", "extension.toml"]
 
 
 def test_the_links_manifest_is_a_valid_link(link):
@@ -305,7 +499,8 @@ def test_the_links_manifest_is_a_valid_link(link):
     assert manifest.is_link and manifest.kind == "link" and manifest.external
     assert (manifest.id, manifest.name) == ("demo-app", "Demo App")
     assert manifest.entry == "https://example.com/" and manifest.icon == ""
-    assert manifest.name_localized["de"] == "Demo App" and manifest.description_localized["de"]
+    assert manifest.description == "A link for the platform"
+    assert manifest.name_localized == {} and manifest.description_localized == {}  # only a commented-out example
     assert manifest.consent.scopes == () and manifest.services == () and manifest.hosts == () and manifest.dev_port is None
 
 
@@ -316,6 +511,7 @@ def test_the_links_manifest_has_nothing_of_a_server_and_explains_what_to_change(
     assert not keys & {"icon", "display", "client_auth", "dev_port", "hosts", "scopes", "audience", "mode"}  # `icon` stays a comment
     assert "[consent]" not in text and "[[services]]" not in text
     assert "# icon = " in text and "same host as `entry`" in text  # the optional icon: an address, not a file
+    assert "# [extension.name_localized]" in text and "# <language code> = " in text  # the shape of a translation, no language
     assert "Replace" in text and "example.com" in text  # the entry is a placeholder to replace
 
 
@@ -346,6 +542,6 @@ def test_the_other_templates_still_say_how_to_run_them(template, project, cli):
 def test_the_links_readme_says_what_a_link_is_and_how_to_publish_it(link):
     readme = (link / "README.md").read_text(encoding="utf-8")
     assert readme.startswith("# Demo App") and "appext new demo-app --template link" in readme
-    for needle in ("system browser", "no Keycloak client", "no key", "no deployment", "same host", "appext store register",
+    for needle in ("system browser", "no OAuth client", "no key", "no deployment", "same host", "appext store register",
                    "appext store submit", "appext store verify", "reviewer"):
         assert needle in readme, needle

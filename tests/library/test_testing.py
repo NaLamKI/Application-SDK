@@ -21,7 +21,11 @@ def build(tmp_path):
     manifest_path = write_project(tmp_path)
     ext = Extension.from_manifest(
         manifest_path,
-        environ={"APPEXT_SERVICE_PROJECTS_URL": "https://projects.test/api", "APPEXT_SERVICE_EXPORT_URL": "https://export.test"},
+        environ={
+            "APPEXT_ISSUER": "https://idp.test/realms/test",
+            "APPEXT_SERVICE_PROJECTS_URL": "https://projects.test/api",
+            "APPEXT_SERVICE_EXPORT_URL": "https://export.test",
+        },
     )
     api = ext.router(prefix="/api")
 
@@ -118,7 +122,9 @@ async def test_works_inside_an_async_test_too(tmp_path):
 
 def test_works_with_the_secure_host_prefixed_cookie_too(tmp_path):
     manifest_path = write_project(tmp_path)
-    ext = Extension.from_manifest(manifest_path, environ={"APPEXT_PUBLIC_URL": "https://demo.apps.example.com"})
+    ext = Extension.from_manifest(
+        manifest_path, environ={"APPEXT_ISSUER": "https://idp.test/realms/test", "APPEXT_PUBLIC_URL": "https://demo.apps.example.com"}
+    )
     api = ext.router(prefix="/api")
 
     @api.get("/me")
@@ -139,7 +145,7 @@ def test_the_client_needs_the_app_from_asgi():
 
 def test_service_mocks_need_a_configured_url(tmp_path):
     manifest_path = write_project(tmp_path)
-    ext = Extension.from_manifest(manifest_path, environ={})
+    ext = Extension.from_manifest(manifest_path, environ={"APPEXT_ISSUER": "https://idp.test/realms/test"})
     with service_mocks(ext) as mocks:
         with pytest.raises(KeyError, match="APPEXT_SERVICE_EXPORT_URL"):
             mocks.get("export", "/x")
@@ -220,7 +226,7 @@ async def test_codes_are_single_use_and_bound_to_pkce_and_redirect_uri(idp):
     redirect = idp.authorize(authorize_url(idp), "u")
     code = httpx.URL(redirect).params["code"]
     verifier, _ = pkce()
-    settings = ExtensionSettings.from_env(loads_manifest(MANIFEST), {})
+    settings = ExtensionSettings.from_env(loads_manifest(MANIFEST), {"APPEXT_ISSUER": "https://idp.test/realms/test"})
     settings = type(settings)(**{**settings.__dict__, "client_id": "c1", "client_key": Secret(idp.pem)})
     auth = ClientAuthenticator(settings, FakeClock())
 

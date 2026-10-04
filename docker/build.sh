@@ -1,9 +1,9 @@
 #!/bin/sh
 # Builds the SDK wheel and the base image appext/python:<version>-py3.12.
 #
-#   sdk/docker/build.sh                      # tag appext/python:0.1.0-py3.12
-#   APPEXT_IMAGE_REPO=registry.example.com/appext/python sdk/docker/build.sh
-#   PYTHON=/path/to/python3.12 sdk/docker/build.sh
+#   docker/build.sh                          # tag appext/python:0.1.0-py3.12
+#   APPEXT_IMAGE_REPO=registry.example.com/appext/python docker/build.sh
+#   PYTHON=/path/to/python3.12 docker/build.sh
 #
 # The wheel is built outside the image and only the wheel enters the build
 # context – not the source tree, not the tests, not any key lying around.

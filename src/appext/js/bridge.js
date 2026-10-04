@@ -1,5 +1,5 @@
 /*
- * appext bridge to the FMIS app, served by every extension at /_sdk/bridge.js
+ * appext bridge to the host app, served by every extension at /_sdk/bridge.js
  * (and loaded into every HTML page the SDK serves, so nobody has to remember).
  *
  *     AppExt.setTitle("Reports");
@@ -7,8 +7,8 @@
  *
  * Three places an extension can run, and one script for all of them:
  *
- *   1. In the FMIS app on a phone: a JavaScript channel called AppExtBridge.
- *   2. In the FMIS web app: the extension sits in an iframe and talks to its parent with
+ *   1. In the host app on a phone: a JavaScript channel called AppExtBridge.
+ *   2. In the host's web app: the extension sits in an iframe and talks to its parent with
  *      postMessage. Only the web app's origins (APPEXT_APP_ORIGINS) are listened to and spoken to.
  *   3. In an ordinary browser tab: no app around. Every call is a quiet no-op that returns false -
  *      an extension must work there - and a bar with a way back to the web app is drawn on top.
@@ -36,7 +36,8 @@
 
   var CONFIG = window.__APPEXT_CONFIG__ || {};
   var APP_ORIGINS = Array.isArray(CONFIG.appOrigins) ? CONFIG.appOrigins : [];
-  var MARKER = "FMIS-App-WebView/";
+  // What the host app adds to the user agent of its WebView: `<Name>-App-WebView/<version>`.
+  var MARKER = typeof CONFIG.appMarker === "string" && CONFIG.appMarker ? CONFIG.appMarker : "-App-WebView/";
 
   var EVENTS = { theme: [], language: [] };
   var last = {};
@@ -56,7 +57,7 @@
     }
   }
 
-  /** Embedded in the FMIS web app: framed, and there is a web app configured to be framed by. */
+  /** Embedded in the host's web app: framed, and there is a web app configured to be framed by. */
   function inWebApp() {
     return channel() === null && framed() && APP_ORIGINS.length > 0;
   }
@@ -115,7 +116,7 @@
   }
 
   var AppExt = {
-    /** True inside the FMIS app - the phone app's WebView or the web app's frame. */
+    /** True inside the host app - the phone app's WebView or the web app's frame. */
     get inApp() {
       return inPhoneApp() || inWebApp();
     },
@@ -221,7 +222,13 @@
 
     var lang = language();
     var name = (CONFIG.nameLocalized && CONFIG.nameLocalized[lang]) || CONFIG.name || document.title || "";
-    var label = lang === "de" ? "Zurück zu FMIS" : "Back to FMIS";
+    // The platform names its app and may translate the label (`APPEXT_APP_NAME`, `APPEXT_APP_BACK_LABELS`);
+    // "{app}" in a label stands for the name.
+    var appName = typeof CONFIG.appName === "string" ? CONFIG.appName : "";
+    var labels = CONFIG.backLabels && typeof CONFIG.backLabels === "object" ? CONFIG.backLabels : {};
+    var template = labels[lang] || labels.en || "Back to {app}";
+    var label = String(template).split("{app}").join(appName || "the app");
+    var accent = typeof CONFIG.appAccent === "string" && /^#[0-9a-fA-F]{3,8}$/.test(CONFIG.appAccent) ? CONFIG.appAccent : "#2563eb";
     var dark = typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches;
     var ink = dark ? "#e8efe9" : "#1a2b22";
 
@@ -247,7 +254,7 @@
     button.title = label;
     button.style.cssText =
       "box-sizing:border-box;width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;" +
-      "border:0;border-radius:20px;background:transparent;color:#0b9f6a;cursor:pointer;padding:0;";
+      "border:0;border-radius:20px;background:transparent;color:" + accent + ";cursor:pointer;padding:0;";
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
     svg.setAttribute("width", "24");
@@ -270,14 +277,15 @@
     title.textContent = name;
     title.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
 
-    var fmis = document.createElement("span");
-    fmis.textContent = "FMIS";
-    fmis.style.cssText =
-      "margin-left:auto;font-weight:700;font-size:13px;letter-spacing:.08em;color:#0b9f6a;";
-
     bar.appendChild(button);
     bar.appendChild(title);
-    bar.appendChild(fmis);
+    if (appName) {
+      var badge = document.createElement("span");
+      badge.textContent = appName;
+      badge.style.cssText =
+        "margin-left:auto;font-weight:700;font-size:13px;letter-spacing:.08em;color:" + accent + ";";
+      bar.appendChild(badge);
+    }
     root.appendChild(bar);
     document.body.insertBefore(host, document.body.firstChild);
   }

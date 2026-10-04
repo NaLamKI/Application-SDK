@@ -1,8 +1,13 @@
 """`appext new`: render a template directory into a new project.
 
-Placeholders are the exact tokens `{{id}}`, `{{name}}` and `{{package}}` –
-without inner spaces, so that Jinja's own `{{ name }}` in the HTMX pages is never
-touched. The `link` template is a manifest and a README, nothing else: a link has no server.
+Placeholders are the exact tokens `{{id}}`, `{{name}}`, `{{package}}`, `{{platform_name}}` and
+the starter service of the platform (`{{service}}`, `{{service_env}}` – the name in `APPEXT_SERVICE_<NAME>_URL` –
+`{{audience}}`, `{{scope}}`) – without inner
+spaces, so that Jinja's own `{{ name }}` in the HTMX pages is never touched. The `link` template
+is a manifest and a README, nothing else: a link has no server.
+
+The new project also gets an `appext.toml`: the platform it is written for (OAuth service, App
+Store), so that `appext dev` and `appext store …` work without options. See `appext.platform`.
 """
 
 from __future__ import annotations
@@ -10,10 +15,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from appext.platform import PROJECT_FILE, Platform
+
 from .context import CliError, Context
 from .project import validate
+from .settings import resolve
 
-PLACEHOLDER = re.compile(r"\{\{(id|name|package)\}\}")
+PLACEHOLDER = re.compile(r"\{\{(id|name|package|platform_name|service|service_env|audience|scope)\}\}")
 #: Copied byte for byte: vendored or generated files are not ours to rewrite.
 VERBATIM = ("*.min.js", "package-lock.json")
 SKIP_PARTS = {"node_modules", "__pycache__", ".pytest_cache", ".DS_Store", "dist", ".appext", ".venv"}
@@ -32,8 +40,35 @@ def display_name(extension_id: str) -> str:
     return extension_id.replace("-", " ").title()
 
 
-def _values(extension_id: str, name: str) -> dict[str, str]:
-    return {"id": extension_id, "name": name, "package": extension_id.replace("-", "_")}
+def _values(extension_id: str, name: str, platform: Platform) -> dict[str, str]:
+    return {
+        "id": extension_id,
+        "name": name,
+        "package": extension_id.replace("-", "_"),
+        "platform_name": platform.display_name,
+        "service": platform.starter.service,
+        "service_env": platform.starter.service.upper(),
+        "audience": platform.starter.audience,
+        "scope": platform.starter.scope,
+    }
+
+
+def project_platform_file(platform: Platform) -> str:
+    """`appext.toml` of a new project: the platform's settings, and hints for what is still missing."""
+    hints = [
+        ("name", 'name = "Example Platform"'),
+        ("issuer", 'issuer = "https://auth.example.com/realms/example"      # the OAuth / OpenID Connect service'),
+        ("store_url", 'store_url = "https://api.example.com/api/v1"           # the App Store API'),
+    ]
+    missing = [text for key, text in hints if not getattr(platform, key)]
+    body = platform.to_toml()
+    if missing:
+        body = body.replace("[platform]\n", "[platform]\n" + "".join(f"# {line}\n" for line in missing), 1)
+    return (
+        "# The platform this project is written for: its OAuth service and its App Store. Not part of the\n"
+        "# store contract (extension.toml is) and no secret ever belongs here. Every key is explained in\n"
+        "# docs/platform.md of the SDK.\n\n" + body
+    )
 
 
 def _render(text: str, values: dict[str, str]) -> str:
@@ -55,7 +90,8 @@ def _check_name(name: str) -> None:
 def new(args, ctx: Context) -> int:
     name = args.name or display_name(args.id)
     _check_name(name)
-    values = _values(args.id, name)
+    platform = resolve(args, ctx)
+    values = _values(args.id, name, platform)
     source = templates_dir() / args.template
     target = ctx.path(args.dir) / args.id
     if target.exists() and (not target.is_dir() or any(target.iterdir())):
@@ -75,12 +111,15 @@ def new(args, ctx: Context) -> int:
         except UnicodeDecodeError:  # an image: copy as it is
             destination.write_bytes(path.read_bytes())
         destination.chmod(path.stat().st_mode & 0o777)
+    (target / PROJECT_FILE).write_text(project_platform_file(platform), encoding="utf-8")
 
     shown = target.relative_to(ctx.cwd) if target.is_relative_to(ctx.cwd) else target
     ctx.say(f"Created {shown} from the {args.template} template.")
     ctx.say("")
     ctx.say("Next:")
     ctx.say(f"  cd {shown}")
+    if not (platform.issuer and platform.store_url):
+        ctx.say(f"  edit {PROJECT_FILE}: name the platform's OAuth service (issuer) and App Store (store_url)")
     if args.template == "link":  # no server: nothing to install, test or run
         ctx.say("  edit extension.toml: set `entry` to the address the app should open")
         ctx.say("  appext manifest check")

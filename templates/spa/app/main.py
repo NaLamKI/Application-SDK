@@ -23,21 +23,18 @@ async def me(user: User = Depends(ext.current_user)):
     return {"sub": user.sub, "name": user.name, "email": user.email, "roles": sorted(user.roles)}
 
 
-@api.get("/fields")
-async def fields(fmis: ServiceClient = Depends(ext.service("fmis"))):
-    """The person's fields, read from the FMIS API.
+@api.get("/items")
+async def items(service: ServiceClient = Depends(ext.service("{{service}}"))):
+    """The person's items, read from the `{{service}}` service of the platform.
 
-    `ext.service("fmis")` exchanges the session's token for one that is valid
-    only for `fmis-api` and only for the scopes the manifest names – and calls
-    with it. The token never reaches the browser.
+    `/items` is an example: use a path your service offers. `ext.service("{{service}}")`
+    exchanges the session's token for one that is valid only for `{{audience}}` and only
+    for the scopes the manifest names – and calls with it. The token never reaches the browser.
     """
-    response = await fmis.get("/fields")
+    response = await service.get("/items")
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"the FMIS API answered {response.status_code}")
-    return [
-        {"id": f["id"], "name": f.get("name"), "area": f.get("area"), "areaUnit": f.get("areaUnit")}
-        for f in response.json()
-    ]
+        raise HTTPException(status_code=502, detail=f"the service answered {response.status_code}")
+    return [{"id": item["id"], "name": item.get("name")} for item in response.json()]
 
 
 app = ext.asgi(static_dir=ROOT / "frontend" / "dist")

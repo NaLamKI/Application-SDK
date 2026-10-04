@@ -1,36 +1,38 @@
 """`appext keycloak export`: a realm import for a **local** Keycloak.
 
-For development without the FMIS stack: a fresh Keycloak (`start-dev
+For development without the platform's own stack: a fresh Keycloak (`start-dev
 --import-realm`) that knows the extension's client, the scopes its manifest asks
-for and the dev key's public half. The real thing is the App Store, which
-provisions the same objects through the Admin API when a reviewer approves
-(`concepts/app-store.md` §8); this is its stand-in on a laptop.
+for and the dev key's public half. The real thing is the platform's App Store, which
+provisions the same objects through the Keycloak Admin API when a reviewer approves
+(docs/platform.md); this is its stand-in on a laptop. Only useful where the
+platform's OAuth service is Keycloak.
 
-Two things in the output are deliberate:
+Three things in the output are deliberate:
 
 * `basic` and `acr` are declared. A realm file that lists `clientScopes` *replaces*
-  Keycloak's built-in set; without `basic` no token carries `sub` (the incident of
-  21.09.2026 in `backend/keycloak/README.md`). Everything else the built-in set
+  Keycloak's built-in set; without `basic` no token carries `sub`. Everything else the built-in set
   offers (profile, e-mail, roles …) is left out on purpose: it would show up on the
   consent screen without the extension needing it.
 * Every audience gets a **client of its own** (a bearer-only stand-in for the target
   service). Keycloak's token exchange resolves `audience` to a client of the realm and
-  answers `invalid_client (Audience not found)` for a name it does not know. In the FMIS
-  stack `fmis-api` exists; in a fresh local realm nothing else would create it.
-* Redirect URIs cover both `localhost` and `127.0.0.1`, plus the app's own scheme,
-  so the extension works in a browser and in the app's WebView.
+  answers `invalid_client (Audience not found)` for a name it does not know. On the
+  platform the target services exist; in a fresh local realm nothing else would create them.
+* Redirect URIs cover both `localhost` and `127.0.0.1`, plus the host app's own return
+  address (`app_redirect_uri` of the platform file), so the extension works in a browser
+  and in the host app's WebView.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .context import CliError, Context
 from .keys import JWK_FILE, ensure_dev_key, load_public_jwk
 from .project import Project, load_project, refuse_link
+from .settings import resolve
 
-APP_REDIRECT_URI = "org.agrifooddata.apps.fmis.web:/callback"
 DEV_USER = ("dev@localhost.invalid", "dev")
 
 BASIC_SCOPE = {
@@ -103,13 +105,14 @@ def audience_client(audience: str) -> dict:
     }
 
 
-def build_client(project: Project, jwk: dict, *, backchannel_url: str) -> dict:
+def build_client(project: Project, jwk: dict, *, backchannel_url: str, app_redirect_uri: str | None = None,
+                 platform_name: str = "") -> dict:
     origins = [f"http://localhost:{project.dev_port}", f"http://127.0.0.1:{project.dev_port}"]
     attributes = {
         "pkce.code.challenge.method": "S256",
         "standard.token.exchange.enabled": "true",
         "display.on.consent.screen": "true",
-        "consent.screen.text": f"Extension for the FMIS app: {project.name}",
+        "consent.screen.text": f"Extension for {platform_name or 'the platform'}: {project.name}",
         "post.logout.redirect.uris": "##".join(f"{o}/" for o in origins),
         "backchannel.logout.url": backchannel_url,
         "backchannel.logout.session.required": "true",
@@ -129,7 +132,7 @@ def build_client(project: Project, jwk: dict, *, backchannel_url: str) -> dict:
         "frontchannelLogout": False,
         "fullScopeAllowed": False,
         "consentRequired": True,
-        "redirectUris": [f"{o}/auth/callback" for o in origins] + [APP_REDIRECT_URI],
+        "redirectUris": [f"{o}/auth/callback" for o in origins] + ([app_redirect_uri] if app_redirect_uri else []),
         "webOrigins": [],
         "defaultClientScopes": ["basic", "acr", *project.consent_scopes],
         "optionalClientScopes": [scope for service in project.services for scope in service.scopes],
@@ -148,7 +151,8 @@ def build_client(project: Project, jwk: dict, *, backchannel_url: str) -> dict:
 
 
 def build_realm(project: Project, jwk: dict, *, realm: str, consent_audience: str,
-                backchannel_url: str, dev_user: bool) -> dict:
+                backchannel_url: str, dev_user: bool, app_redirect_uri: str | None = None,
+                platform_name: str = "") -> dict:
     scopes = [audience_scope(name, audience) for name, audience in scope_audiences(project, consent_audience).items()]
     document = {
         "realm": realm,
@@ -159,7 +163,8 @@ def build_realm(project: Project, jwk: dict, *, realm: str, consent_audience: st
         "loginWithEmailAllowed": True,
         "clientScopes": [BASIC_SCOPE, ACR_SCOPE, *scopes],
         "clients": [
-            build_client(project, jwk, backchannel_url=backchannel_url),
+            build_client(project, jwk, backchannel_url=backchannel_url, app_redirect_uri=app_redirect_uri,
+                         platform_name=platform_name),
             *(audience_client(a) for a in sorted(set(scope_audiences(project, consent_audience).values()))),
         ],
     }
@@ -173,9 +178,17 @@ def build_realm(project: Project, jwk: dict, *, realm: str, consent_audience: st
     return document
 
 
+def realm_name(issuer: str | None) -> str:
+    """The realm of a Keycloak issuer URL (`…/realms/<name>`), else `local`."""
+    parts = [p for p in urlsplit(issuer or "").path.split("/") if p]
+    return parts[parts.index("realms") + 1] if "realms" in parts[:-1] else "local"
+
+
 def export(args, ctx: Context) -> int:
     project = load_project(ctx, args.path)
     refuse_link(project, "no Keycloak client to export")
+    platform = resolve(args, ctx, project_dir=project.root)
+    consent_audience = args.consent_audience or platform.starter.audience
     if args.key:
         jwk_file = ctx.path(args.key)
     else:
@@ -188,8 +201,10 @@ def export(args, ctx: Context) -> int:
     else:
         jwk = {}
     backchannel_url = args.backchannel_url or f"http://{args.backchannel_host}:{project.dev_port}/auth/backchannel-logout"
-    document = build_realm(project, jwk, realm=args.realm, consent_audience=args.consent_audience,
-                           backchannel_url=backchannel_url, dev_user=args.dev_user)
+    document = build_realm(project, jwk, realm=args.realm or realm_name(platform.issuer),
+                           consent_audience=consent_audience, backchannel_url=backchannel_url,
+                           dev_user=args.dev_user, app_redirect_uri=platform.app_redirect_uri,
+                           platform_name=platform.name)
     text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
     if not args.out:
         ctx.out.write(text)

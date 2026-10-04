@@ -33,6 +33,26 @@ async def test_app_marker_selects_the_app_redirect_uri(env: Env):
     assert is_app_mode(f"x {APP_MARKER}2") and not is_app_mode(None) and not is_app_mode("")
 
 
+async def test_a_platform_with_its_own_marker_says_so(tmp_path):
+    from .conftest import build_env
+
+    custom = build_env(tmp_path, extra_environ={"APPEXT_APP_MARKER": "AcmeShell/"})
+    mine = await custom.ext.core.start_login(user_agent="Mozilla/5.0 AcmeShell/3")
+    other = await custom.ext.core.start_login(user_agent=f"Mozilla/5.0 {APP_MARKER}1")
+    assert mine.app_mode and query_of(mine.url)["redirect_uri"] == APP_REDIRECT
+    assert not other.app_mode, "the default marker is replaced, not added to"
+
+
+async def test_without_a_return_address_of_the_host_app_there_is_no_app_mode(tmp_path):
+    """Nothing hands the sign-in over, so a WebView is a browser like any other."""
+    from .conftest import build_env
+
+    env = build_env(tmp_path / "other", extra_environ={"APPEXT_APP_REDIRECT_URI": ""})
+    start = await env.ext.core.start_login(user_agent=f"Mozilla/5.0 {APP_MARKER}1")
+    assert env.ext.settings.app_redirect_uri is None
+    assert not start.app_mode and query_of(start.url)["redirect_uri"] == f"{PUBLIC_URL}/auth/callback"
+
+
 async def test_each_login_gets_fresh_secrets(env: Env):
     a = await env.ext.core.start_login(user_agent=None)
     b = await env.ext.core.start_login(user_agent=None)

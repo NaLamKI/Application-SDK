@@ -1,0 +1,7 @@
+{% if items %}
+  <ul>
+    {% for item in items %}<li>{{ item.name or item.id }}</li>{% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">No items yet.</p>
+{% endif %}

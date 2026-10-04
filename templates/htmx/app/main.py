@@ -20,22 +20,22 @@ templates = Jinja2Templates(directory=ROOT / "app" / "templates")  # autoescapin
 
 @pages.get("/")
 async def index(request: Request, user: User = Depends(ext.current_user)):
-    """The whole page. The list of fields is fetched by HTMX once the page is up."""
+    """The whole page. The list of items is fetched by HTMX once the page is up."""
     return templates.TemplateResponse(request, "index.html", {"title": ext.manifest.name, "user": user})
 
 
-@pages.get("/fields")
-async def fields(request: Request, fmis: ServiceClient = Depends(ext.service("fmis"))):
-    """An HTML fragment: the person's fields, read from the FMIS API.
+@pages.get("/items")
+async def items(request: Request, service: ServiceClient = Depends(ext.service("{{service}}"))):
+    """An HTML fragment: the person's items, read from the `{{service}}` service of the platform.
 
-    `ext.service("fmis")` exchanges the session's token for one that is valid
-    only for `fmis-api` and only for the scopes the manifest names – and calls
-    with it. The token never reaches the browser.
+    `/items` is an example: use a path your service offers. `ext.service("{{service}}")`
+    exchanges the session's token for one that is valid only for `{{audience}}` and only
+    for the scopes the manifest names – and calls with it. The token never reaches the browser.
     """
-    response = await fmis.get("/fields")
+    response = await service.get("/items")
     if response.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"the FMIS API answered {response.status_code}")
-    return templates.TemplateResponse(request, "_fields.html", {"fields": response.json()})
+        raise HTTPException(status_code=502, detail=f"the service answered {response.status_code}")
+    return templates.TemplateResponse(request, "_items.html", {"items": response.json()})
 
 
 app = ext.asgi(static_dir=ROOT / "static")

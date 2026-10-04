@@ -3,10 +3,10 @@ id = "demo-link"
 name = "Demo link"
 version = "1.0.0"
 kind = "link"
-entry = "https://shop.example.com/fmis?ref=app#top"
+entry = "https://shop.example.com/app?ref=app#top"
 
 [[services]]
-name = "fmis"
-audience = "fmis-api"
+name = "data"
+audience = "data-api"
 scopes = ["ext-data-read"]
 mode = "user"

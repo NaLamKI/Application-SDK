@@ -31,8 +31,8 @@ dev_port = 8123
 scopes = ["ext-data-read"]
 
 [[services]]
-name = "fmis"
-audience = "fmis-api"
+name = "data"
+audience = "data-api"
 scopes = ["ext-stock-read"]
 mode = "user"
 
@@ -44,13 +44,29 @@ mode = "service"
 """
 
 
+PLATFORM = """\
+[platform]
+name = "Example Platform"
+issuer = "http://127.0.0.1:58080/realms/example"
+store_url = "http://127.0.0.1:8000/api/v1"
+app_redirect_uri = "com.example.app:/callback"
+
+[platform.services]
+data-api = "http://127.0.0.1:8000/api/v1"
+
+[platform.starter]
+service = "data"
+audience = "data-api"
+scope = "ext-data-read"
+"""
+
 LINK = """\
 [extension]
 id = "shop-link"
 name = "Shop"
 version = "1.0.0"
 kind = "link"
-entry = "https://shop.example.com/fmis"
+entry = "https://shop.example.com/app"
 """
 
 
@@ -65,7 +81,8 @@ class Run:
 
     def __init__(self, cwd: Path, env: dict | None = None) -> None:
         self.cwd = cwd
-        self.env = {} if env is None else env
+        # The person's configuration directory is in the temporary tree: a test never reads the real one.
+        self.env = {"XDG_CONFIG_HOME": str(cwd / ".xdg")} if env is None else env
         self.servers: list[tuple[str, dict]] = []
 
     def __call__(self, *argv: str) -> int:
@@ -96,6 +113,7 @@ def run(tmp_path) -> Run:
 @pytest.fixture
 def project(tmp_path) -> Path:
     (tmp_path / "extension.toml").write_text(MANIFEST, encoding="utf-8")
+    (tmp_path / "appext.toml").write_text(PLATFORM, encoding="utf-8")
     (tmp_path / "icon.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>", encoding="utf-8")
     return tmp_path
 
@@ -220,7 +238,7 @@ def test_manifest_check_names_a_link_and_its_address(run, link_project):
     assert run("manifest", "check") == 0
     lines = run.out.splitlines()
     assert lines[0] == "extension.toml: OK"
-    assert "  kind       link" in lines and "  entry      https://shop.example.com/fmis" in lines
+    assert "  kind       link" in lines and "  entry      https://shop.example.com/app" in lines
     assert any(line.startswith("  display    external") and "system browser" in line for line in lines)
     assert "  id         shop-link" in lines  # no Keycloak client to name
     assert "Keycloak" not in run.out and "client " not in run.out and "consent" not in run.out and "service" not in run.out
@@ -404,7 +422,7 @@ def test_export_describes_the_client(run, project):
     assert set(client["redirectUris"]) == {
         "http://localhost:8123/auth/callback",
         "http://127.0.0.1:8123/auth/callback",
-        "org.agrifooddata.apps.fmis.web:/callback",
+        "com.example.app:/callback",
     }
 
 
@@ -428,7 +446,7 @@ def test_export_assigns_scopes_like_the_store_would(run, project):
     assert {m["protocolMapper"] for m in scopes["basic"]["protocolMappers"]} >= {"oidc-sub-mapper"}
     audience = {name: scopes[name]["protocolMappers"][0]["config"]["included.client.audience"]
                 for name in ("ext-data-read", "ext-stock-read", "svc-export-write")}
-    assert audience == {"ext-data-read": "fmis-api", "ext-stock-read": "fmis-api", "svc-export-write": "export-api"}
+    assert audience == {"ext-data-read": "data-api", "ext-stock-read": "data-api", "svc-export-write": "export-api"}
     for name in audience:
         assert scopes[name]["attributes"]["include.in.token.scope"] == "true"
 
@@ -459,7 +477,7 @@ def test_export_gives_every_audience_a_client_for_the_token_exchange(run, projec
     """Keycloak answers `Audience not found` for an audience that is not a client of the realm."""
     realm = exported(run)
     audiences = {c["clientId"]: c for c in realm["clients"] if c["clientId"] != "ext-demo"}
-    assert set(audiences) == {"fmis-api", "export-api"}
+    assert set(audiences) == {"data-api", "export-api"}
     assert all(c["bearerOnly"] and not c["standardFlowEnabled"] for c in audiences.values())
 
 
@@ -467,6 +485,24 @@ def test_export_writes_a_file(run, project):
     assert run("keycloak", "export", "--out", ".appext/realm-ext.json") == 0
     assert json.loads((project / ".appext" / "realm-ext.json").read_text())["clients"]
     assert "realm-ext.json" in run.out
+
+
+def test_export_takes_the_realm_the_consent_audience_and_the_app_address_from_the_platform(run, project):
+    realm = exported(run)
+    assert realm["realm"] == "example"                         # the last part of the issuer's path
+    client = realm["clients"][0]
+    assert "com.example.app:/callback" in client["redirectUris"]
+    assert client["attributes"]["consent.screen.text"] == "Extension for Example Platform: Demo"
+    scopes = {s["name"]: s for s in realm["clientScopes"]}
+    assert scopes["ext-data-read"]["protocolMappers"][0]["config"]["included.client.audience"] == "data-api"
+
+
+def test_export_without_a_platform_still_works_and_adds_no_host_app_address(run, project):
+    (project / "appext.toml").unlink()
+    realm = exported(run, "--consent-audience", "my-api")
+    assert realm["realm"] == "local"
+    assert set(realm["clients"][0]["redirectUris"]) == {"http://localhost:8123/auth/callback", "http://127.0.0.1:8123/auth/callback"}
+    assert "Extension for the platform: Demo" == realm["clients"][0]["attributes"]["consent.screen.text"]
 
 
 # --- dev, serve, health -----------------------------------------------------------------------
@@ -515,6 +551,39 @@ def test_dev_prepares_the_local_environment(run, project):
     assert "created now" in run.out and "appext store register" in run.out
 
 
+def test_dev_takes_what_the_platform_file_knows(run, project):
+    assert run("dev") == 0
+    env = run.env
+    assert env["APPEXT_ISSUER"] == "http://127.0.0.1:58080/realms/example"
+    assert env["APPEXT_APP_REDIRECT_URI"] == "com.example.app:/callback"
+    assert env["APPEXT_APP_NAME"] == "Example Platform"
+    assert env["APPEXT_SERVICE_DATA_URL"] == "http://127.0.0.1:8000/api/v1"
+    assert "APPEXT_SERVICE_EXPORT_URL" not in env
+    assert "sign-in    http://127.0.0.1:58080/realms/example" in run.out
+
+
+def test_dev_needs_a_platform_and_says_how_to_name_one(run, project):
+    (project / "appext.toml").unlink()
+    assert run("dev") == 1
+    assert "APPEXT_ISSUER" in run.err and "appext.toml" in run.err and not run.servers
+
+
+def test_dev_can_be_pointed_at_another_platform(run, project, tmp_path):
+    other = tmp_path / "elsewhere.toml"
+    other.write_text(PLATFORM.replace("realms/example", "realms/other").replace("Example Platform", "Other Platform"))
+    assert run("dev", "--platform", str(other)) == 0
+    assert run.env["APPEXT_ISSUER"] == "http://127.0.0.1:58080/realms/other" and run.env["APPEXT_APP_NAME"] == "Other Platform"
+
+
+def test_dev_finds_a_named_platform_in_the_config_directory(run, project):
+    named = project / ".xdg" / "appext" / "platforms"
+    named.mkdir(parents=True)
+    (named / "staging.toml").write_text(PLATFORM.replace("realms/example", "realms/staging"))
+    assert run("dev", "--platform", "staging") == 0
+    assert run.env["APPEXT_ISSUER"] == "http://127.0.0.1:58080/realms/staging"
+    assert run("dev", "--platform", "missing") == 1 and "does not exist" in run.err
+
+
 def test_dev_reuses_the_key_it_created(run, project):
     run("dev")
     before = (project / ".appext" / "client_key.pem").read_bytes()
@@ -524,7 +593,7 @@ def test_dev_reuses_the_key_it_created(run, project):
 
 
 def test_dev_env_files_override_the_defaults_and_the_shell_overrides_both(run, project):
-    (project / "bundle.env").write_text('# bundle\nAPPEXT_ISSUER="http://kc.test/realms/x"\nAPPEXT_SERVICE_FMIS_URL=http://fmis.test/api\n'
+    (project / "bundle.env").write_text('# bundle\nAPPEXT_ISSUER="http://kc.test/realms/x"\nAPPEXT_SERVICE_DATA_URL=http://data.test/api\n'
                                          'APPEXT_SERVICE_EXPORT_URL=http://export.test\nexport APPEXT_PUBLIC_URL=http://127.0.0.1:9999\n')
     run.env["APPEXT_PUBLIC_URL"] = "http://localhost:8123"
     assert run("dev", "--env-file", "bundle.env", "--no-reload") == 0
@@ -544,7 +613,7 @@ def test_dev_takes_only_appext_variables_from_an_env_file(run, project):
 def test_dev_warns_about_a_service_without_a_url(run, project):
     run("dev")
     assert "APPEXT_SERVICE_EXPORT_URL is not set" in run.err
-    assert "APPEXT_SERVICE_FMIS_URL" not in run.err  # the local FMIS API is known
+    assert "APPEXT_SERVICE_DATA_URL" not in run.err  # the platform file knows where data-api is
 
 
 def test_dev_explains_an_unusable_configuration(run, project):

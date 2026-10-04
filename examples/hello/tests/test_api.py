@@ -30,7 +30,7 @@ def test_the_api_needs_a_session():
 
 def test_items_come_from_the_service(client):
     with service_mocks(ext) as mocks:
-        mocks.get("{{service}}", "/items").respond(json=[
+        mocks.get("data", "/items").respond(json=[
             {"id": "i-1", "name": "First item", "owner": "x"},
             {"id": "i-2"},
         ])
@@ -38,11 +38,11 @@ def test_items_come_from_the_service(client):
     # Only what the backend picks is passed on to the browser.
     assert response.json() == [{"id": "i-1", "name": "First item"}, {"id": "i-2", "name": None}]
     # The token was exchanged for the one service and the scopes the manifest names – nothing more.
-    assert client.token_requests == [("{{service}}", "{{audience}}", ("{{scope}}",), "user")]
+    assert client.token_requests == [("data", "data-api", ("data-read",), "user")]
 
 
 def test_a_failing_service_is_a_bad_gateway_not_a_crash(client):
     with service_mocks(ext) as mocks:
-        mocks.get("{{service}}", "/items").respond(status_code=403)
+        mocks.get("data", "/items").respond(status_code=403)
         response = client.get("/api/items")
     assert response.status_code == 502

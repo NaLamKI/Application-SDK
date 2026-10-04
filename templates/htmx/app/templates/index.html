@@ -2,8 +2,8 @@
 {% block content %}
   <h1>{{ title }}</h1>
   <p class="muted">Signed in as {{ user.name or user.email or user.sub }}</p>
-  <h2>Your fields</h2>
-  <div id="fields" hx-get="/fields" hx-trigger="load" hx-swap="innerHTML">
+  <h2>Your items</h2>
+  <div id="items" hx-get="/items" hx-trigger="load" hx-swap="innerHTML">
     <p class="muted">Loading …</p>
   </div>
 {% endblock %}

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "appext"
 version = "0.1.0"
-description = "SDK for FMIS extensions: sign-in, server-side session and calls to other services on behalf of the user"
+description = "SDK for building extensions of platforms that follow the reference architecture: sign-in, server-side session and calls to other services on behalf of the user"
 requires-python = ">=3.12"
 license = { text = "Proprietary" }
 dependencies = [
@@ -25,6 +25,8 @@ test = [
     "respx>=0.21",
     "fakeredis>=2.26",
     "redis>=5",
+    # the htmx template renders pages with Jinja2 (its tests run inside the SDK test suite)
+    "jinja2>=3.1",
 ]
 
 [project.scripts]

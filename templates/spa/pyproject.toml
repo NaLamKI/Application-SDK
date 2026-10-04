@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "{{package}}"
 version = "0.1.0"
-description = "{{name}} – an extension for the FMIS app"
+description = "{{name}} – an extension for {{platform_name}}"
 requires-python = ">=3.12"
 # Add what your backend needs next to the SDK.
 dependencies = ["appext>=0.1,<1"]

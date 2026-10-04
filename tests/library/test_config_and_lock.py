@@ -14,9 +14,22 @@ from .conftest import MANIFEST
 
 manifest = loads_manifest(MANIFEST)
 
+#: What a local run needs: nothing is guessed, so the issuer has to come from somewhere.
+LOCAL = {"APPEXT_ISSUER": "http://127.0.0.1:58080/realms/example"}
+
+PLATFORM_FILE = """
+[platform]
+name = "Example Platform"
+issuer = "http://127.0.0.1:58080/realms/example"
+app_redirect_uri = "com.example.app:/callback"
+
+[platform.services]
+projects-api = "http://127.0.0.1:8000/api/v1"
+"""
+
 PROD = {
     "APPEXT_ENV": "prod",
-    "APPEXT_ISSUER": "https://sso.example.com/realms/fmis",
+    "APPEXT_ISSUER": "https://sso.example.com/realms/example",
     "APPEXT_PUBLIC_URL": "https://demo.apps.example.com",
     "APPEXT_CLIENT_KEY_FILE": "{key}",
     "APPEXT_SESSION_KEY_FILE": "{session}",
@@ -38,14 +51,14 @@ def prod_env(tmp_path):
 # -- defaults for local development ---------------------------------------------------------------------
 
 
-def test_local_defaults_need_nothing(caplog):
+def test_local_needs_nothing_but_an_issuer(caplog):
     with caplog.at_level(logging.WARNING, logger="appext"):
-        s = ExtensionSettings.from_env(manifest, {})
+        s = ExtensionSettings.from_env(manifest, LOCAL)
     assert s.env == "local" and s.is_local
-    assert s.issuer == "http://127.0.0.1:58080/realms/fmis"
+    assert s.issuer == "http://127.0.0.1:58080/realms/example"
     assert s.client_id == "ext-demo" and s.client_auth == "private_key_jwt"
     assert s.public_url == "http://127.0.0.1:8000"
-    assert s.app_redirect_uri == "org.agrifooddata.apps.fmis.web:/callback"
+    assert s.app_redirect_uri is None, "no host app: the extension is a website like any other"
     assert s.session_store == "memory"
     assert s.session_key_generated and s.session_keys == ()
     assert "session key generated" in caplog.text or "generated for this process" in caplog.text
@@ -53,21 +66,109 @@ def test_local_defaults_need_nothing(caplog):
     assert s.web_redirect_uri == "http://127.0.0.1:8000/auth/callback"
 
 
+def test_nothing_is_guessed_not_even_locally():
+    with pytest.raises(ConfigError, match="APPEXT_ISSUER is required"):
+        ExtensionSettings.from_env(manifest, {})
+
+
 def test_local_dev_port_from_the_manifest():
     m = loads_manifest(MANIFEST.replace('hosts = ["cdn.example.test"]', "dev_port = 8123"))
-    assert ExtensionSettings.from_env(m, {}).public_url == "http://127.0.0.1:8123"
+    assert ExtensionSettings.from_env(m, LOCAL).public_url == "http://127.0.0.1:8123"
 
 
-def test_local_fmis_service_gets_the_local_default_url(caplog):
-    m = loads_manifest(MANIFEST.replace('audience = "projects-api"', 'audience = "fmis-api"'))
-    s = ExtensionSettings.from_env(m, {})
-    assert s.services["projects"] == "http://127.0.0.1:8000/api/v1"
-    assert "export" not in s.services  # no default for foreign services; a warning, and an error on use
+def test_a_local_service_without_a_url_is_a_warning_not_an_error(caplog):
+    with caplog.at_level(logging.WARNING, logger="appext"):
+        s = ExtensionSettings.from_env(manifest, LOCAL)
+    assert "projects" not in s.services and "export" not in s.services
+    assert "APPEXT_SERVICE_PROJECTS_URL is not set" in caplog.text
 
 
 def test_redirect_uri_depends_on_the_mode():
-    s = ExtensionSettings.from_env(manifest, {})
-    assert s.redirect_uri(True) == s.app_redirect_uri and s.redirect_uri(False) == s.web_redirect_uri
+    s = ExtensionSettings.from_env(manifest, {**LOCAL, "APPEXT_APP_REDIRECT_URI": "com.example.app:/callback"})
+    assert s.redirect_uri(True) == "com.example.app:/callback" and s.redirect_uri(False) == s.web_redirect_uri
+
+
+def test_without_a_host_app_the_app_mode_has_no_address_of_its_own():
+    s = ExtensionSettings.from_env(manifest, LOCAL)
+    assert s.redirect_uri(True) == s.redirect_uri(False) == s.web_redirect_uri
+
+
+# -- the platform file supplies the defaults of development at the desk ---------------------------------
+
+
+@pytest.fixture
+def project(tmp_path):
+    (tmp_path / "extension.toml").write_text(MANIFEST.replace('audience = "projects-api"', 'audience = "projects-api"'))
+    (tmp_path / "appext.toml").write_text(PLATFORM_FILE)
+    return __import__("appext").load_manifest(tmp_path / "extension.toml")
+
+
+def test_the_projects_platform_file_fills_in_what_the_environment_does_not_say(project):
+    s = ExtensionSettings.from_env(project, {})
+    assert s.issuer == "http://127.0.0.1:58080/realms/example"
+    assert s.app_redirect_uri == "com.example.app:/callback"
+    assert s.services["projects"] == "http://127.0.0.1:8000/api/v1"
+    assert "export" not in s.services  # a service the file does not know stays unset
+
+
+def test_the_environment_wins_over_the_platform_file(project):
+    s = ExtensionSettings.from_env(project, {
+        "APPEXT_ISSUER": "http://127.0.0.1:9999/realms/other",
+        "APPEXT_APP_REDIRECT_URI": "com.other.app:/callback",
+        "APPEXT_SERVICE_PROJECTS_URL": "http://127.0.0.1:1234",
+    })
+    assert s.issuer == "http://127.0.0.1:9999/realms/other"
+    assert s.app_redirect_uri == "com.other.app:/callback"
+    assert s.services["projects"] == "http://127.0.0.1:1234"
+
+
+def test_a_deployment_does_not_read_the_platform_file(project, prod_env):
+    prod_env.pop("APPEXT_ISSUER")
+    with pytest.raises(ConfigError, match="APPEXT_ISSUER is required"):
+        ExtensionSettings.from_env(project, prod_env)
+
+
+def test_a_platform_file_that_names_a_platform_by_environment(project, tmp_path):
+    named = tmp_path / "other.toml"
+    named.write_text(PLATFORM_FILE.replace("realms/example", "realms/chosen"))
+    s = ExtensionSettings.from_env(project, {"APPEXT_PLATFORM": str(named)})
+    assert s.issuer == "http://127.0.0.1:58080/realms/chosen"
+
+
+def test_a_broken_platform_file_is_reported(project, tmp_path):
+    (tmp_path / "appext.toml").write_text('[platform]\nissuer = "not a url"\nsurprise = 1\n')
+    with pytest.raises(ConfigError) as err:
+        ExtensionSettings.from_env(project, {})
+    assert "platform file" in str(err.value) and "platform.surprise" in str(err.value)
+
+
+# -- what a platform may tell the page the extension draws -------------------------------------------------
+
+
+def test_the_host_apps_name_marker_labels_and_accent():
+    s = ExtensionSettings.from_env(manifest, LOCAL)
+    assert s.app_name == "" and s.app_marker == "-App-WebView/" and dict(s.app_back_labels) == {} and s.app_accent == ""
+    s = ExtensionSettings.from_env(manifest, {
+        **LOCAL,
+        "APPEXT_APP_NAME": "Acme",
+        "APPEXT_APP_MARKER": "AcmeWebView/",
+        "APPEXT_APP_BACK_LABELS": '{"en": "Back to {app}", "pt-BR": "Voltar para {app}"}',
+        "APPEXT_APP_ACCENT": "#0b9f6a",
+    })
+    assert (s.app_name, s.app_marker, s.app_accent) == ("Acme", "AcmeWebView/", "#0b9f6a")
+    assert dict(s.app_back_labels) == {"en": "Back to {app}", "pt-BR": "Voltar para {app}"}
+
+
+@pytest.mark.parametrize("change, message", [
+    ({"APPEXT_APP_BACK_LABELS": "not json"}, "APPEXT_APP_BACK_LABELS"),
+    ({"APPEXT_APP_BACK_LABELS": '["en"]'}, "APPEXT_APP_BACK_LABELS"),
+    ({"APPEXT_APP_BACK_LABELS": '{"english": "Back"}'}, "APPEXT_APP_BACK_LABELS"),
+    ({"APPEXT_APP_BACK_LABELS": '{"en": ""}'}, "APPEXT_APP_BACK_LABELS"),
+    ({"APPEXT_APP_ACCENT": "green"}, "APPEXT_APP_ACCENT"),
+])
+def test_bad_host_app_settings_are_reported(change, message):
+    with pytest.raises(ConfigError, match=message):
+        ExtensionSettings.from_env(manifest, {**LOCAL, **change})
 
 
 # -- a deployment ----------------------------------------------------------------------------------------------
@@ -109,7 +210,7 @@ def test_client_secret_auth_needs_the_secret_instead_of_the_key(prod_env, tmp_pa
 @pytest.mark.parametrize(
     "change, message",
     [
-        ({"APPEXT_ISSUER": "http://sso.example.com/realms/fmis"}, "https"),
+        ({"APPEXT_ISSUER": "http://sso.example.com/realms/example"}, "https"),
         ({"APPEXT_ISSUER": "ftp://x"}, "http"),
         ({"APPEXT_PUBLIC_URL": "http://demo.apps.example.com"}, "https"),
         ({"APPEXT_PUBLIC_URL": "https://demo.apps.example.com/sub/path"}, "origin only"),
@@ -132,7 +233,7 @@ def test_invalid_values_are_named(prod_env, change, message):
 
 def test_loopback_may_use_http_even_in_a_deployment(prod_env):
     prod_env["APPEXT_PUBLIC_URL"] = "http://127.0.0.1:8000"
-    prod_env["APPEXT_ISSUER"] = "http://127.0.0.1:58080/realms/fmis"
+    prod_env["APPEXT_ISSUER"] = "http://127.0.0.1:58080/realms/example"
     s = ExtensionSettings.from_env(manifest, prod_env)
     assert not s.cookie_secure and s.session_cookie_name == "ext_session_8000"
 
@@ -149,7 +250,7 @@ def test_trusted_proxies_are_parsed(prod_env):
 
 def test_issuer_trailing_slash_is_normalised(prod_env):
     prod_env["APPEXT_ISSUER"] += "/"
-    assert ExtensionSettings.from_env(manifest, prod_env).issuer == "https://sso.example.com/realms/fmis"
+    assert ExtensionSettings.from_env(manifest, prod_env).issuer == "https://sso.example.com/realms/example"
 
 
 def test_secrets_never_show_up_in_repr(prod_env, tmp_path):
@@ -269,7 +370,7 @@ def test_startup_check_reads_the_lock_next_to_the_manifest(tmp_path, monkeypatch
     (tmp_path / "extension.toml").write_text(MANIFEST)
     write_lock(tmp_path, LOCK.replace('environment = "prod"', 'environment = "local"'))
     m = __import__("appext").load_manifest(tmp_path / "extension.toml")
-    s = ExtensionSettings.from_env(m, {"APPEXT_ENV": "local"})
+    s = ExtensionSettings.from_env(m, {"APPEXT_ENV": "local", **LOCAL})
     assert check_startup(m, s).version == "1.2.0"
     write_lock(tmp_path, LOCK.replace('environment = "prod"', 'environment = "local"').replace('"svc-export-write"', '"x"'))
     with pytest.raises(LockError, match="svc-export-write"):
@@ -280,7 +381,7 @@ def test_missing_lock_is_only_acceptable_locally(tmp_path, monkeypatch, prod_env
     monkeypatch.chdir(tmp_path)
     (tmp_path / "extension.toml").write_text(MANIFEST)
     m = __import__("appext").load_manifest(tmp_path / "extension.toml")
-    assert check_startup(m, ExtensionSettings.from_env(m, {})) is None
+    assert check_startup(m, ExtensionSettings.from_env(m, LOCAL)) is None
     with pytest.raises(LockError, match="not found"):
         check_startup(m, ExtensionSettings.from_env(m, prod_env))
 
@@ -300,7 +401,7 @@ def test_two_extensions_on_one_machine_do_not_share_cookie_names(prod_env):
     the one on :8200 would overwrite each other's session at 127.0.0.1."""
     names = []
     for port in (8100, 8200):
-        env = {**prod_env, "APPEXT_PUBLIC_URL": f"http://127.0.0.1:{port}", "APPEXT_ISSUER": "http://127.0.0.1:58080/realms/fmis"}
+        env = {**prod_env, "APPEXT_PUBLIC_URL": f"http://127.0.0.1:{port}", "APPEXT_ISSUER": "http://127.0.0.1:58080/realms/example"}
         s = ExtensionSettings.from_env(manifest, env)
         names.append((s.session_cookie_name, s.transaction_cookie_name))
     assert names[0] != names[1] and names[0][0].endswith("_8100") and names[1][1].endswith("_8200")
@@ -347,6 +448,6 @@ def test_an_app_origin_that_is_none_is_refused_at_start(prod_env, value):
 def test_the_local_web_app_may_use_http(prod_env):
     prod_env["APPEXT_APP_ORIGINS"] = "http://127.0.0.1:8088,http://localhost:8088"
     prod_env["APPEXT_PUBLIC_URL"] = "http://127.0.0.1:8100"
-    prod_env["APPEXT_ISSUER"] = "http://127.0.0.1:58080/realms/fmis"
+    prod_env["APPEXT_ISSUER"] = "http://127.0.0.1:58080/realms/example"
     s = ExtensionSettings.from_env(manifest, prod_env)
     assert s.app_origins == ("http://127.0.0.1:8088", "http://localhost:8088")

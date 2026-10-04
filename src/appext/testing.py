@@ -11,6 +11,9 @@ Unit tests of an extension should not need Keycloak:
             mocks.get("projects", "/v1/projects").respond(json=[])
             assert client.get("/api/projects").status_code == 200
 
+A test run must not depend on the machine it runs on (the platform an operator configured, the
+`APPEXT_*` variables of the shell): put `configure_test_environment()` in `tests/conftest.py`.
+
 `ExtensionTestClient` creates the session directly in the extension's store (no
 login), handles the CSRF header and `Origin`, and answers token exchanges with
 a placeholder token, so the only thing a test has to mock is the target
@@ -27,6 +30,7 @@ import base64
 import functools
 import hashlib
 import json
+import os
 import secrets
 import threading
 import time
@@ -52,6 +56,7 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore", message="Using `httpx` with `starlette.testclient`")
     from starlette.testclient import TestClient
 
+from .manifest import load_manifest
 from .core import ACCESS_TOKEN_TYPE, ASSERTION_TYPE, BACKCHANNEL_EVENT, TOKEN_EXCHANGE_GRANT
 from .session import Session
 
@@ -723,6 +728,43 @@ class TestUser:
     roles: tuple[str, ...] = ()
     client_roles: tuple[str, ...] = ()
     scopes: tuple[str, ...] = ("openid",)
+
+
+#: The issuer a test run uses unless it is told otherwise: the address `FakeIdP` answers for.
+TEST_ISSUER = "https://idp.test/realms/test"
+#: The host app's return address in tests (any URI with a scheme will do; nothing opens it).
+TEST_APP_REDIRECT_URI = "com.example.testapp:/callback"
+
+
+def configure_test_environment(
+    manifest: str | os.PathLike[str] = "extension.toml",
+    *,
+    environ: dict[str, str] | None = None,
+    issuer: str = TEST_ISSUER,
+    app_redirect_uri: str | None = TEST_APP_REDIRECT_URI,
+) -> dict[str, str]:
+    """Make the environment of a test run the same everywhere. Call it before the app is imported.
+
+    Removes every `APPEXT_*` variable (a shell that exports a deployment's settings must not change
+    a test), then sets what a local run needs: `APPEXT_ENV=local`, an issuer, the host app's return
+    address and, for every service the manifest declares, `APPEXT_SERVICE_<NAME>_URL` – so that
+    `service_mocks` knows where the service "is". No platform file is read and nothing leaves the machine.
+    Returns what it set.
+
+        # tests/conftest.py
+        from appext.testing import configure_test_environment
+        configure_test_environment("extension.toml")
+    """
+    target = os.environ if environ is None else environ
+    for name in [n for n in target if n.startswith("APPEXT_")]:
+        del target[name]
+    values = {"APPEXT_ENV": "local", "APPEXT_ISSUER": issuer}
+    if app_redirect_uri:
+        values["APPEXT_APP_REDIRECT_URI"] = app_redirect_uri
+    for service in load_manifest(manifest).services:
+        values[f"APPEXT_SERVICE_{service.env_name}_URL"] = f"https://{service.name.replace('_', '-')}.test/api"
+    target.update(values)
+    return values
 
 
 def test_user(

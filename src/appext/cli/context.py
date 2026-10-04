@@ -72,8 +72,9 @@ class Context:
 
     @property
     def config_dir(self) -> Path:
-        base = self.env.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-        return Path(base) / "appext"
+        from appext.platform import config_dir
+
+        return config_dir(self.env)
 
     def http(self, **options) -> "httpx.Client":
         import httpx

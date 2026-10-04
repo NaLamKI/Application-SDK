@@ -25,9 +25,12 @@ needs_npm = pytest.mark.skipif(NPM is None or os.environ.get("APPEXT_SKIP_NPM") 
 
 
 def create(tmp_path: Path, template: str) -> Path:
+    """A project written for no platform in particular: the starter service is `data`. `XDG_CONFIG_HOME` points
+    at a directory that does not exist, so that no platform file of the machine's user changes that."""
     out = io.StringIO()
+    env = {"XDG_CONFIG_HOME": str(tmp_path / "no-config")}
     assert main(["new", "demo-app", "--template", template, "--dir", str(tmp_path)],
-                Context(env={}, cwd=tmp_path, out=out, err=out)) == 0, out.getvalue()
+                Context(env=env, cwd=tmp_path, out=out, err=out)) == 0, out.getvalue()
     return tmp_path / "demo-app"
 
 
@@ -94,15 +97,14 @@ def inline_problems(html: str) -> Inline:
 def serve_and_fetch(project: Path, paths: list[str], *, user: bool = True) -> dict:
     """Imports the project's app in a fresh interpreter and fetches `paths` as a signed-in test user."""
     script = textwrap.dedent(f"""
-        import json, os
-        for name in [n for n in os.environ if n.startswith("APPEXT_")]:
-            del os.environ[name]
-        from appext.testing import ExtensionTestClient, service_mocks, test_user
+        import json
+        from appext.testing import ExtensionTestClient, configure_test_environment, service_mocks, test_user
+        configure_test_environment("extension.toml")  # the same on every machine; before the app is imported
         from app.main import app, ext
         client = ExtensionTestClient(app, user=test_user(name="Ada") if {user!r} else None)
         out = {{}}
         with service_mocks(ext) as mocks:
-            mocks.get("fmis", "/fields").respond(json=[{{"id": "f1", "name": "North", "area": 1.5, "areaUnit": "ha"}}])
+            mocks.get("data", "/items").respond(json=[{{"id": "i1", "name": "First item"}}])
             for path in {paths!r}:
                 r = client.get(path, follow_redirects=False)
                 out[path] = {{"status": r.status_code, "csp": r.headers.get("content-security-policy"),
@@ -141,6 +143,13 @@ def test_the_sdk_client_is_imported_from_the_sdk_not_bundled(built):
 
 
 @needs_npm
+def test_the_built_page_asks_the_backend_for_items_in_plain_english(built):
+    bundle = next((built / "frontend" / "dist" / "assets").glob("*.js")).read_text()
+    assert "/api/me" in bundle and "/api/items" in bundle
+    assert "Your items" in bundle and "No items yet." in bundle
+
+
+@needs_npm
 def test_the_sdk_serves_the_built_frontend_under_its_default_policy(built):
     served = serve_and_fetch(built, ["/", "/assets/does-not-exist.js", "/_sdk/client.js", "/_sdk/icon"])
     page = served["/"]
@@ -163,13 +172,15 @@ def test_the_page_is_not_shown_without_a_session(built):
 
 
 def test_htmx_pages_use_no_inline_script_or_style(htmx):
-    served = serve_and_fetch(htmx, ["/", "/fields"])
-    for path in ("/", "/fields"):
+    served = serve_and_fetch(htmx, ["/", "/items"])
+    for path in ("/", "/items"):
         assert served[path]["status"] == 200, path
         assert "default-src 'self'" in served[path]["csp"]
         assert inline_problems(served[path]["text"]).problems == [], path
     page = inline_problems(served["/"]["text"])
     assert page.scripts == ["/_sdk/bridge.js", "/htmx.min.js", "/app.js"] and page.stylesheets == ["/style.css"]
+    assert 'hx-get="/items"' in served["/"]["text"] and "Your items" in served["/"]["text"]
+    assert "First item" in served["/items"]["text"]  # what the mocked service returned
 
 
 def test_htmx_is_told_not_to_inject_styles_or_evaluate_code(htmx):

@@ -143,7 +143,7 @@ async def test_exchanged_tokens_are_cached_per_audience_and_scope_set(env: Env):
     a = await env.ext.core.exchange_token(session_id, "projects-api", ["svc-projects-read"])
     b = await env.ext.core.exchange_token(session_id, "projects-api", ["svc-projects-read"])
     assert a.token == b.token and len(env.idp.token_requests(exchange)) == 1
-    await env.ext.core.exchange_token(session_id, "fmis-api", ["ext-data-read"])  # another audience
+    await env.ext.core.exchange_token(session_id, "data-api", ["ext-data-read"])  # another audience
     assert len(env.idp.token_requests(exchange)) == 2
     await env.ext.core.exchange_token(session_id, "projects-api", ["svc-projects-read", "ext-data-read"])  # another scope set
     assert len(env.idp.token_requests(exchange)) == 3

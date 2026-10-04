@@ -4,7 +4,7 @@ FROM python:3.12-slim
 
 ARG APPEXT_WHEEL
 LABEL org.opencontainers.image.title="appext base image" \
-      org.opencontainers.image.description="Python 3.12 with the appext SDK for FMIS extensions"
+      org.opencontainers.image.description="Python 3.12 with the appext SDK for extensions of platforms that follow the reference architecture"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

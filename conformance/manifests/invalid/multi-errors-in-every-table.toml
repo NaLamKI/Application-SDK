@@ -10,7 +10,7 @@ hosts = ["A"]
 scopes = ["Bad"]
 
 [[services]]
-name = "fmis"
-audience = "fmis-api"
+name = "data"
+audience = "data-api"
 scopes = ["ext-stock-read"]
 mode = "nope"

@@ -6,10 +6,10 @@
 check is `appext health`.
 
 ```sh
-sdk/docker/build.sh          # builds the wheel, then appext/python:0.1.0-py3.12
+docker/build.sh              # builds the wheel, then appext/python:0.1.0-py3.12
 ```
 
-An extension's Dockerfile starts `FROM` this image (see `sdk/templates/*/Dockerfile`).
+An extension's Dockerfile starts `FROM` this image (see `templates/*/Dockerfile`).
 Push the tag to your own registry and point the template at it with
 `--build-arg APPEXT_IMAGE=registry.example.com/appext/python:0.1.0-py3.12`.
 

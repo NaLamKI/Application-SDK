@@ -13,3 +13,5 @@ auth-bundle
 tests
 compose.yaml
 README.md
+# The platform file is for development at the desk; a running extension gets these settings from the auth bundle.
+appext.toml
