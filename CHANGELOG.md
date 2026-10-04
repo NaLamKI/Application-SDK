@@ -16,5 +16,8 @@ The first version in this repository (the SDK was developed inside a product rep
 - The bridge to a host app (`/_sdk/bridge.js`), with the host's name, labels and accent configurable.
 - Command line: `appext new` (templates `spa`, `htmx`, `link`), `dev`, `serve`, `health`,
   `manifest check`, `keys`, `keycloak export`, `store …`.
+- **Stands on its own.** `tests/library/test_standalone.py` and `scripts/check_standalone.py` (a CI job) check that
+  nothing platform-specific or machine-specific is part of the repository and that the built wheel works in a
+  fresh environment against a platform file and a stand-in store.
 - Test helpers (`appext.testing`): a fake identity provider, a test client with a session, service mocks,
   `configure_test_environment`.

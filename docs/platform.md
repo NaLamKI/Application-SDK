@@ -94,27 +94,30 @@ your Keycloak (the realm is named `local`, taken from the issuer's `/realms/loca
 runs the extension ([quickstart.md](quickstart.md#b-with-a-keycloak-of-your-own)). Without
 `app_redirect_uri` the extension never hands the sign-in over to an app; it is a website.
 
-### One real platform
+### A platform with a host app and services of its own
 
-The only concrete platform these guides show: a farm management system with a phone app, a web app
-and services of its own, and a Keycloak. This is the platform file for its local developer stack – an
-illustration of a platform that has a host app and services of its own.
+Most platforms look like this: a Keycloak, an App Store, a phone app that opens extensions in a
+WebView, and a few services extensions may call. This is the platform file of an imaginary one, *Acme
+Farm*, for the developer's machine:
 
 ```toml
 [platform]
-name = "FMIS"
-issuer = "http://127.0.0.1:58080/realms/fmis"
-store_url = "http://127.0.0.1:8000/api/v1"
-# app_redirect_uri = "<the return address of the host app>"
+name = "Acme Farm"
+issuer = "https://auth.acme.example/realms/acme"
+store_url = "https://api.acme.example/api/v1"
+app_redirect_uri = "acmefarm://extension-login"      # the host app's return address
 
 [platform.services]
-fmis-api = "http://127.0.0.1:8000/api/v1"
+acme-api = "https://api.acme.example/api/v1"
 
 [platform.starter]
-service = "fmis"
-audience = "fmis-api"
+service = "acme"
+audience = "acme-api"
 scope = "ext-data-read"
 ```
+
+Nothing in the SDK knows Acme: everything above is read from the file. Swap the file and the same
+extension, the same commands and the same tests work against another platform.
 
 ## Where the settings come from
 

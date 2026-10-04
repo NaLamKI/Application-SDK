@@ -9,9 +9,13 @@ import pytest
 from appext.manifest import ManifestError, load_manifest
 
 ROOT = Path(__file__).resolve().parents[2] / "conformance" / "manifests"
-EXPECTED = json.loads((ROOT / "expected.json").read_text()) if (ROOT / "expected.json").exists() else {}
+# These cases belong to this repository, so a missing file is a failure, never a skip: a suite that quietly
+# lost its conformance cases would stay green for ever.
+EXPECTED = json.loads((ROOT / "expected.json").read_text())
 
-pytestmark = pytest.mark.skipif(not EXPECTED, reason="conformance/manifests/expected.json is not there")
+
+def test_the_cases_are_there():
+    assert EXPECTED, "conformance/manifests/expected.json lists no case"
 
 
 def test_every_case_file_is_listed_and_every_listing_has_a_file():

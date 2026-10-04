@@ -182,3 +182,16 @@ Node, and a Compose check needs Docker. The tests that build the templates' fron
 ```sh
 APPEXT_SKIP_NPM=1 pytest
 ```
+
+The SDK has to work on its own – no platform, no backend of a product, no neighbouring checkout. Two
+things hold it to that. `tests/library/test_standalone.py` fails when a real platform address, a path
+of a developer's machine or a `../` into another repository gets into the repository. And
+
+```sh
+python scripts/check_standalone.py
+```
+
+builds the wheel, installs it into a fresh environment away from this repository, and then works as an
+extension developer on an imaginary platform: a platform file, a stand-in App Store on `localhost`,
+`appext new` for every template, the tests of each new project, `appext store status`. CI runs it as
+its own job.

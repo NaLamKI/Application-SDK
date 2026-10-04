@@ -19,3 +19,14 @@ jobs:
           node-version: "22"
       - run: pip install -e ".[test]"
       - run: pytest
+
+  # The SDK must work on its own: from the built wheel, in a fresh environment, against a platform that is
+  # nothing but a platform file and a stand-in store (scripts/check_standalone.py).
+  standalone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/check_standalone.py
