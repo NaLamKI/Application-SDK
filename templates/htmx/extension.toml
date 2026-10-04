@@ -1,0 +1,33 @@
+# The manifest of this extension: what the App Store registers, what the SDK reads
+# at start-up. No secret ever belongs here. Every key is explained in
+# docs/manifest.md of the SDK; `appext manifest check` tells you what is wrong.
+
+[extension]
+id = "{{id}}"
+name = "{{name}}"
+description = "An extension for the FMIS app"
+version = "0.1.0"
+entry = "/"
+icon = "icon.svg"
+# Where the app shows the extension: "in_app" (the default) – inside the app – or "external":
+# the app only hands over to the system browser, a jump-off point to your own site.
+# display = "external"
+# Local development port. 8000 is taken by the FMIS backend on a developer machine.
+dev_port = 8100
+
+[extension.name_localized]
+de = "{{name}}"
+
+[extension.description_localized]
+de = "Eine Erweiterung für die FMIS-App"
+
+[consent]
+# Scopes the person confirms on first open. Scopes of a service you call on their
+# behalf belong under [[services]] instead: each scope may be named only once.
+scopes = []
+
+[[services]]
+name = "fmis"                # ext.service("fmis") in the code
+audience = "fmis-api"        # the Keycloak client of the target service
+scopes = ["ext-data-read"]   # read fields, cropping and activities
+mode = "user"                # on behalf of the signed-in person

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Extension icon">
+  <rect width="64" height="64" rx="14" fill="#2f6f3e"/>
+  <path d="M32 14c-9 4-14 12-14 20 0 8 6 14 14 14s14-6 14-14c0-8-5-16-14-20z" fill="#e8f3e4"/>
+  <path d="M32 20v26M32 32l-7-6M32 38l8-7" stroke="#2f6f3e" stroke-width="3" stroke-linecap="round" fill="none"/>
+</svg>

@@ -1,0 +1,305 @@
+{
+  "valid/minimal.toml": [],
+  "valid/full.toml": [],
+  "valid/services-both-modes.toml": [],
+  "valid/prerelease-version.toml": [],
+  "valid/client-secret.toml": [],
+  "valid/empty-consent-and-no-services.toml": [],
+  "valid/id-three-characters.toml": [],
+  "valid/id-forty-characters.toml": [],
+  "valid/dev-port-bounds.toml": [],
+  "valid/host-is-an-ip.toml": [],
+  "valid/display-in-app.toml": [],
+  "valid/display-external.toml": [],
+  "valid/link-minimal.toml": [],
+  "valid/link-with-icon.toml": [],
+  "valid/link-display-external.toml": [],
+  "valid/link-with-roles-and-translations.toml": [],
+  "valid/link-loopback-http.toml": [],
+  "valid/kind-extension.toml": [],
+  "invalid/r1-missing-extension-table.toml": [
+    "extension"
+  ],
+  "invalid/r1-missing-id.toml": [
+    "extension.id"
+  ],
+  "invalid/r1-missing-name.toml": [
+    "extension.name"
+  ],
+  "invalid/r1-missing-version.toml": [
+    "extension.version"
+  ],
+  "invalid/r1-missing-entry.toml": [
+    "extension.entry"
+  ],
+  "invalid/r1-missing-icon.toml": [
+    "extension.icon"
+  ],
+  "invalid/r1-id-uppercase.toml": [
+    "extension.id"
+  ],
+  "invalid/r1-id-too-short.toml": [
+    "extension.id"
+  ],
+  "invalid/r1-id-too-long.toml": [
+    "extension.id"
+  ],
+  "invalid/r1-id-trailing-hyphen.toml": [
+    "extension.id"
+  ],
+  "invalid/r1-id-leading-digit.toml": [
+    "extension.id"
+  ],
+  "invalid/r1-id-underscore.toml": [
+    "extension.id"
+  ],
+  "invalid/r1-id-not-a-string.toml": [
+    "extension.id"
+  ],
+  "invalid/r1-version-two-parts.toml": [
+    "extension.version"
+  ],
+  "invalid/r1-version-v-prefix.toml": [
+    "extension.version"
+  ],
+  "invalid/r1-version-not-a-string.toml": [
+    "extension.version"
+  ],
+  "invalid/r1-entry-no-slash.toml": [
+    "extension.entry"
+  ],
+  "invalid/r1-entry-has-a-scheme.toml": [
+    "extension.entry"
+  ],
+  "invalid/r1-entry-double-slash.toml": [
+    "extension.entry"
+  ],
+  "invalid/r1-entry-slash-backslash.toml": [
+    "extension.entry"
+  ],
+  "invalid/r1-name-empty.toml": [
+    "extension.name"
+  ],
+  "invalid/r1-icon-empty.toml": [
+    "extension.icon"
+  ],
+  "invalid/r1-extension-is-not-a-table.toml": [
+    "extension"
+  ],
+  "invalid/r2-consent-scope-uppercase.toml": [
+    "consent.scopes[0]"
+  ],
+  "invalid/r2-consent-scope-underscore.toml": [
+    "consent.scopes[0]"
+  ],
+  "invalid/r2-consent-scope-not-a-string.toml": [
+    "consent.scopes[0]"
+  ],
+  "invalid/r2-service-scope-leading-digit.toml": [
+    "services[0].scopes[0]"
+  ],
+  "invalid/r2-scopes-not-an-array.toml": [
+    "consent.scopes"
+  ],
+  "invalid/r2-duplicate-within-consent.toml": [
+    "consent.scopes[1]"
+  ],
+  "invalid/r2-duplicate-consent-and-service.toml": [
+    "services[0].scopes[0]"
+  ],
+  "invalid/r2-duplicate-across-services.toml": [
+    "services[1].scopes[0]"
+  ],
+  "invalid/r3-service-name-uppercase.toml": [
+    "services[0].name"
+  ],
+  "invalid/r3-service-name-hyphen.toml": [
+    "services[0].name"
+  ],
+  "invalid/r3-service-name-missing.toml": [
+    "services[0].name"
+  ],
+  "invalid/r3-service-name-duplicate.toml": [
+    "services[1].name"
+  ],
+  "invalid/r3-mode-invalid.toml": [
+    "services[0].mode"
+  ],
+  "invalid/r3-mode-missing.toml": [
+    "services[0].mode"
+  ],
+  "invalid/r3-audience-empty.toml": [
+    "services[0].audience"
+  ],
+  "invalid/r3-audience-missing.toml": [
+    "services[0].audience"
+  ],
+  "invalid/r3-scopes-empty.toml": [
+    "services[0].scopes"
+  ],
+  "invalid/r3-scopes-missing.toml": [
+    "services[0].scopes"
+  ],
+  "invalid/r3-services-not-an-array.toml": [
+    "services"
+  ],
+  "invalid/r3-second-service-is-broken.toml": [
+    "services[1].mode"
+  ],
+  "invalid/r4-audience-role-with-space.toml": [
+    "extension.audience_roles[0]"
+  ],
+  "invalid/r4-audience-roles-not-an-array.toml": [
+    "extension.audience_roles"
+  ],
+  "invalid/r4-min-app-version-two-parts.toml": [
+    "extension.min_app_version"
+  ],
+  "invalid/r4-host-with-scheme.toml": [
+    "extension.hosts[0]"
+  ],
+  "invalid/r4-host-uppercase.toml": [
+    "extension.hosts[0]"
+  ],
+  "invalid/r4-host-with-path.toml": [
+    "extension.hosts[0]"
+  ],
+  "invalid/r4-host-with-port.toml": [
+    "extension.hosts[0]"
+  ],
+  "invalid/r4-hosts-not-an-array.toml": [
+    "extension.hosts"
+  ],
+  "invalid/r4-client-auth-unknown.toml": [
+    "extension.client_auth"
+  ],
+  "invalid/r4-dev-port-too-low.toml": [
+    "extension.dev_port"
+  ],
+  "invalid/r4-dev-port-too-high.toml": [
+    "extension.dev_port"
+  ],
+  "invalid/r4-dev-port-a-string.toml": [
+    "extension.dev_port"
+  ],
+  "invalid/r4-dev-port-a-boolean.toml": [
+    "extension.dev_port"
+  ],
+  "invalid/r5-language-uppercase.toml": [
+    "extension.name_localized.DE"
+  ],
+  "invalid/r5-language-spelled-out.toml": [
+    "extension.name_localized.german"
+  ],
+  "invalid/r5-region-lowercase.toml": [
+    "extension.description_localized.pt-br"
+  ],
+  "invalid/r5-text-empty.toml": [
+    "extension.name_localized.de"
+  ],
+  "invalid/r5-text-not-a-string.toml": [
+    "extension.description_localized.de"
+  ],
+  "invalid/r5-localized-not-a-table.toml": [
+    "extension.name_localized"
+  ],
+  "invalid/r6-unknown-top-level-table.toml": [
+    "surprise"
+  ],
+  "invalid/r6-unknown-extension-key.toml": [
+    "extension.colour"
+  ],
+  "invalid/r6-unknown-consent-key.toml": [
+    "consent.extra"
+  ],
+  "invalid/r6-unknown-service-key.toml": [
+    "services[0].secret"
+  ],
+  "invalid/r6-typo-in-the-table-name.toml": [
+    "extension",
+    "extention"
+  ],
+  "invalid/r6-typo-in-an-optional-key.toml": [
+    "extension.min_app_versoin"
+  ],
+  "invalid/r6-a-secret-pasted-in.toml": [
+    "extension.client_secret"
+  ],
+  "invalid/multi-three-errors.toml": [
+    "extension.entry",
+    "extension.id",
+    "extension.zzz"
+  ],
+  "invalid/multi-errors-in-every-table.toml": [
+    "consent.scopes[0]",
+    "extension.hosts[0]",
+    "extension.version",
+    "services[0].mode"
+  ],
+  "invalid/syntax-error.toml": [
+    ""
+  ],
+  "invalid/r4-display-unknown.toml": [
+    "extension.display"
+  ],
+  "invalid/r4-display-not-a-string.toml": [
+    "extension.display"
+  ],
+  "invalid/r4-display-wrong-case.toml": [
+    "extension.display"
+  ],
+  "invalid/r8-kind-unknown.toml": [
+    "extension.kind"
+  ],
+  "invalid/r8-kind-not-a-string.toml": [
+    "extension.kind"
+  ],
+  "invalid/r8-link-entry-is-a-path.toml": [
+    "extension.entry"
+  ],
+  "invalid/r8-link-entry-missing.toml": [
+    "extension.entry"
+  ],
+  "invalid/r8-link-entry-http.toml": [
+    "extension.entry"
+  ],
+  "invalid/r8-link-entry-no-host.toml": [
+    "extension.entry"
+  ],
+  "invalid/r8-link-entry-has-userinfo.toml": [
+    "extension.entry"
+  ],
+  "invalid/r8-link-entry-other-scheme.toml": [
+    "extension.entry"
+  ],
+  "invalid/r8-link-entry-with-a-space.toml": [
+    "extension.entry"
+  ],
+  "invalid/r8-link-entry-non-ascii-host.toml": [
+    "extension.entry"
+  ],
+  "invalid/r8-link-icon-is-a-file.toml": [
+    "extension.icon"
+  ],
+  "invalid/r8-link-icon-on-another-host.toml": [
+    "extension.icon"
+  ],
+  "invalid/r8-link-display-in-app.toml": [
+    "extension.display"
+  ],
+  "invalid/r8-link-with-client-auth.toml": [
+    "extension.client_auth"
+  ],
+  "invalid/r8-link-with-dev-port.toml": [
+    "extension.dev_port"
+  ],
+  "invalid/r8-link-with-hosts.toml": [
+    "extension.hosts"
+  ],
+  "invalid/r8-link-with-consent-scopes.toml": [
+    "consent.scopes"
+  ],
+  "invalid/r8-link-with-services.toml": [
+    "services"
+  ]
+}

@@ -1,0 +1,7 @@
+[extension]
+id = "demo-link"
+name = "Demo link"
+version = "1.0.0"
+kind = "link"
+entry = "http://127.0.0.1:8088/"
+icon = "http://127.0.0.1:8088/icon.svg"

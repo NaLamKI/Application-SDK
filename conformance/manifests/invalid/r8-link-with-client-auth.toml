@@ -1,0 +1,7 @@
+[extension]
+id = "demo-link"
+name = "Demo link"
+version = "1.0.0"
+kind = "link"
+entry = "https://shop.example.com/fmis?ref=app#top"
+client_auth = "private_key_jwt"

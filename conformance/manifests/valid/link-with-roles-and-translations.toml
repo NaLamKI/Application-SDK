@@ -1,0 +1,15 @@
+[extension]
+id = "demo-link"
+name = "Demo link"
+version = "1.0.0"
+kind = "link"
+entry = "https://shop.example.com/fmis?ref=app#top"
+audience_roles = ["advisor"]
+min_app_version = "1.0.0"
+description = "Our shop"
+
+[extension.name_localized]
+de = "Unser Shop"
+
+[consent]
+scopes = []

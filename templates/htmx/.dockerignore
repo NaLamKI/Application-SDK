@@ -1,0 +1,15 @@
+# What must never reach the image (keys!) or only slows the build down.
+# dockerignore patterns match from the project root: `**/` makes them match at any depth.
+.git
+.appext
+keys
+**/*.pem
+**/*.key
+**/.env
+auth-bundle
+.venv
+**/__pycache__
+**/.pytest_cache
+tests
+compose.yaml
+README.md

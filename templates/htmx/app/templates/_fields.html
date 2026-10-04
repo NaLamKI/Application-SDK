@@ -1,0 +1,7 @@
+{% if fields %}
+  <ul>
+    {% for field in fields %}<li>{{ field.name or field.id }}{% if field.area %} – {{ field.area }} {{ field.areaUnit or '' }}{% endif %}</li>{% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">No fields yet.</p>
+{% endif %}

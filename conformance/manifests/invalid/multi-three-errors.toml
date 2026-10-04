@@ -1,0 +1,7 @@
+[extension]
+id = "Bad_Id"
+name = "Demo app"
+version = "1.0.0"
+entry = "nope"
+icon = "frontend/dist/icon.svg"
+zzz = 1

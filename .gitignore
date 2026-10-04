@@ -1,0 +1,13 @@
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+node_modules/
+.DS_Store
+
+# Key material and local state written by the CLI (`appext keys generate`, `appext dev`)
+.appext/
+auth-bundle/

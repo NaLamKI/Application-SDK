@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{{ title }}</title>
+    <!-- htmx would inject a <style> and may eval(): both are off, the SDK's CSP is default-src 'self'. -->
+    <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}' />
+    <link rel="stylesheet" href="/style.css" />
+    <!-- Served pages (the SPA's index.html) get this automatically; pages your own code renders ask for it. -->
+    <script src="/_sdk/bridge.js"></script>
+    <script src="/htmx.min.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main>{% block content %}{% endblock %}</main>
+  </body>
+</html>

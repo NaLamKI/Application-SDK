@@ -1,0 +1,6 @@
+[extension]
+id = "abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbc"
+name = "Demo app"
+version = "1.0.0"
+entry = "/"
+icon = "frontend/dist/icon.svg"

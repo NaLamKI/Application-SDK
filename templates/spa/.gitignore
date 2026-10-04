@@ -1,0 +1,14 @@
+# Keys and secrets: never in git. `appext manifest check --scan-secrets` fails the build if one slips in.
+.appext/
+keys/
+*.pem
+*.key
+.env
+# Per-environment output of `appext store bundle`
+auth-bundle/
+
+.venv/
+__pycache__/
+.pytest_cache/
+node_modules/
+frontend/dist/

@@ -1,0 +1,81 @@
+# A production-like run on your machine: the extension image, Redis as the session
+# store, and – only with `--profile keycloak` – a Keycloak of its own.
+#
+#   appext keys generate && appext keys session          # secrets in .appext/ (never committed)
+#
+# A) Against the FMIS stack (store provisions the client; the realm lives there):
+#      appext store bundle --env local --out auth-bundle
+#      docker compose --env-file auth-bundle/appext.env up --build
+#
+# B) Against a Keycloak of its own (no FMIS stack needed; port 58180, so it can run next to the FMIS stack):
+#      appext keycloak export --out .appext/realm-ext.json --dev-user \
+#          --backchannel-url http://extension:8000/auth/backchannel-logout
+#      docker compose --profile keycloak up --build
+#      open http://localhost:8100 and sign in with dev@localhost.invalid / dev
+#
+# The extension is reachable on http://localhost:8100 (8000 is the FMIS backend's port).
+
+services:
+  extension:
+    build: .
+    image: {{id}}:dev
+    ports:
+      - "8100:8000"
+    environment:
+      # Values from the auth bundle (--env-file) win; the defaults fit profile B.
+      APPEXT_ENV: ${APPEXT_ENV:-local}
+      APPEXT_ISSUER: ${APPEXT_ISSUER:-http://keycloak.localhost:58180/realms/fmis}
+      APPEXT_CLIENT_ID: ${APPEXT_CLIENT_ID:-ext-{{id}}}
+      APPEXT_CLIENT_AUTH: ${APPEXT_CLIENT_AUTH:-private_key_jwt}
+      APPEXT_PUBLIC_URL: ${APPEXT_PUBLIC_URL:-http://localhost:8100}
+      APPEXT_APP_REDIRECT_URI: ${APPEXT_APP_REDIRECT_URI:-org.agrifooddata.apps.fmis.web:/callback}
+      APPEXT_SERVICE_FMIS_URL: ${APPEXT_SERVICE_FMIS_URL:-http://host.docker.internal:8000/api/v1}
+      APPEXT_SESSION_STORE: redis://redis:6379/0
+      APPEXT_CLIENT_KEY_FILE: /run/secrets/client_key
+      APPEXT_SESSION_KEY_FILE: /run/secrets/session_key
+    secrets:
+      - client_key
+      - session_key
+    # The approved scopes: present after `appext store bundle`; without the file the SDK
+    # accepts the manifest as it is (local environment only).
+    # volumes:
+    #   - ./auth-bundle/extension.lock.toml:/app/extension.lock.toml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]  # sessions may vanish with the container
+
+  keycloak:
+    profiles: ["keycloak"]
+    image: quay.io/keycloak/keycloak:26.5.7
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: "58180"
+      # One address for the browser (the host) and the extension container: a
+      # *.localhost name resolves to the host in a browser and, through the
+      # network alias below, to this container from inside the network.
+      KC_HOSTNAME: http://keycloak.localhost:58180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    ports:
+      - "58180:58180"
+    volumes:
+      - ./.appext/realm-ext.json:/opt/keycloak/data/import/realm-ext.json:ro
+    networks:
+      default:
+        aliases:
+          - keycloak.localhost
+
+# Files, mounted read-only at /run/secrets/<name>; generate them with the two commands at the top.
+secrets:
+  client_key:
+    file: ./.appext/client_key.pem
+  session_key:
+    file: ./.appext/session_key

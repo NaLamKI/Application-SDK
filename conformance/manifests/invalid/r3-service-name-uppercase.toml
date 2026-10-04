@@ -1,0 +1,12 @@
+[extension]
+id = "demo-app"
+name = "Demo app"
+version = "1.0.0"
+entry = "/"
+icon = "frontend/dist/icon.svg"
+
+[[services]]
+name = "Fmis"
+audience = "fmis-api"
+scopes = ["ext-stock-read"]
+mode = "user"

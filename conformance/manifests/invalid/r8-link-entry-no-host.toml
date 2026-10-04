@@ -1,0 +1,6 @@
+[extension]
+id = "demo-link"
+name = "Demo link"
+version = "1.0.0"
+kind = "link"
+entry = "https:///fmis"

@@ -1,0 +1,23 @@
+# The manifest of this link: what the App Store registers. A link is an entry in the store
+# that the FMIS app opens in the system browser – there is no server of the SDK behind it,
+# no sign-in and nothing passed on to the page. Every key is explained in docs/manifest.md
+# of the SDK; `appext manifest check` tells you what is wrong.
+
+[extension]
+id = "{{id}}"
+name = "{{name}}"
+description = "A link for the FMIS app"
+version = "0.1.0"
+kind = "link"
+# The address the app opens: absolute, https (http only for localhost), plain ASCII.
+# Replace this placeholder with your own address.
+entry = "https://example.com/"
+# Optional: an icon for the catalog – an address on the same host as `entry`, not a file.
+# Without one the app shows its fallback icon.
+# icon = "https://example.com/icon.svg"
+
+[extension.name_localized]
+de = "{{name}}"
+
+[extension.description_localized]
+de = "Ein Link für die FMIS-App"
